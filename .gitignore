@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+.eslintcache
+.oxlintrc-cache*
+.ignore
+*.log
+.DS_Store
+CHANGELOG.md.bak
+docs/
+ai_docs/
+dump/

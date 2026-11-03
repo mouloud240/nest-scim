@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: NestJS v${{ matrix.nestjs }} / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+        nestjs: [10, 11]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Pin NestJS v${{ matrix.nestjs }} for this run
+        if: matrix.nestjs != 11
+        run: pnpm -w pkg set 'pnpm.overrides.@nestjs/common=^${{ matrix.nestjs }}.0.0'
+
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test

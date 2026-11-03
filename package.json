@@ -1,0 +1,25 @@
+{
+  "name": "nest-scim",
+  "private": true,
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "format": "prettier --write .",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.0",
+    "@types/node": "^22.0.0",
+    "oxlint": "^1.90.0",
+    "prettier": "^3.6.0",
+    "typescript": "^5.6.0"
+  }
+}
