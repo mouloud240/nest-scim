@@ -82,6 +82,20 @@ export interface ScimUserService<U> {
 }
 
 /**
+ * Optional per-resource timestamp/ETag carrier handed to the adapter via
+ * {@link ScimUserMapper.getMeta}. RFC 7643 §3.1: `meta` sub-attributes are
+ * server-assigned readOnly values — the SPI simply asks YOUR store whether
+ * it tracks them; anything left undefined stays out of the response
+ * (`metaFor` omission semantics).
+ */
+export interface ScimUserMeta {
+  created?: Date;
+  lastModified?: Date;
+  /** ETag-ish version token, e.g. W/"3694e05e9dff590". */
+  version?: string;
+}
+
+/**
  * Attribute translation SPI. Generic over the application's domain type.
  *
  * `fromScim` is called for BOTH creates (no `existing`) and replaces
@@ -103,4 +117,11 @@ export interface ScimUserMapper<U> {
 
   /** Domain object ⇄ complete SCIM representation (no id/meta/password). */
   toScim(domain: U): ScimUser;
+
+  /**
+   * OPTIONAL— supply your store's managed timestamps/ETag so the resource
+   * `meta` is real rather than omitted. Not provided ⇒ `meta` carries
+   * only `resourceType` + `location` (both OPTIONAL per RFC 7643 §3.1).
+   */
+  getMeta?(domain: U): ScimUserMeta;
 }

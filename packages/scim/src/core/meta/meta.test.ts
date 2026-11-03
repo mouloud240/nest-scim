@@ -71,6 +71,14 @@ describe('metaFor', () => {
   it('omits the version key when not provided', () => {
     expect('version' in metaFor({ resourceType: 'User', location: '/x', created })).toBe(false);
   });
+
+  it('omits created/lastModified when the store tracks no timestamps', () => {
+    const meta = metaFor({ resourceType: 'User', location: '/Users/1' });
+
+    expect(meta).toEqual({ resourceType: 'User', location: '/Users/1' });
+    expect('created' in meta).toBe(false);
+    expect('lastModified' in meta).toBe(false);
+  });
 });
 
 describe('withResourceCommons', () => {

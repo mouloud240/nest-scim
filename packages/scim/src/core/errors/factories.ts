@@ -78,3 +78,11 @@ export const notFound = (options: ScimErrorFactoryOptions = {}) =>
 /** Uncaught application failure — 500 with NO scimType. */
 export const internal = (options: ScimErrorFactoryOptions = {}) =>
   new ScimError({ status: 500, detail: options.detail, cause: options.cause });
+
+/**
+ * Operation not supported by the service provider — 501 with NO scimType
+ * (RFC 7644 Table 8: "Service provider does not support the request
+ * operation, e.g., PATCH", docs/rfc/rfc7644.txt lines 3790–3792).
+ */
+export const notImplemented = (options: ScimErrorFactoryOptions = {}) =>
+  new ScimError({ status: 501, detail: options.detail, cause: options.cause });

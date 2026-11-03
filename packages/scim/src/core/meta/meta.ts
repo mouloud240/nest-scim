@@ -31,9 +31,13 @@ export interface MetaForOptions {
   resourceType: string;
   /** Fully-qualified location URI, e.g. from {@link locationFor}. */
   location: string;
-  /** Creation instant. */
-  created: Date;
-  /** Last modification instant; defaults to `created`. */
+  /**
+   * Creation instant. OPTIONAL: leave undefined when the store does not
+   * track timestamps — `created`/`lastModified` then stay omitted rather
+   * than fabricated (RFC 7643 §3.1 meta attributes are OPTIONAL).
+   */
+  created?: Date;
+  /** Last modification instant; defaults to `created` when given. */
   lastModified?: Date;
   /** Version token, exposed to clients as `meta.version`. */
   version?: string;
@@ -49,10 +53,12 @@ export function metaFor({
 }: MetaForOptions): ScimMeta {
   const meta: ScimMeta = {
     resourceType,
-    created: scimDateTime(created),
-    lastModified: scimDateTime(lastModified ?? created),
     location,
   };
+  if (created !== undefined) {
+    meta.created = scimDateTime(created);
+    meta.lastModified = scimDateTime(lastModified ?? created);
+  }
   if (version !== undefined) meta.version = version;
   return meta;
 }
