@@ -44,7 +44,7 @@ interface ScimResponseLike {
  * - unknown shape: last-resort `statusCode` assignment + `end` — callers
  *   get a response on every adapter, this pointer is never lost.
  */
-export function writeScimJson(response: unknown, status: number, body: unknown): void {
+export function writeScimJson(response: unknown, status: number, body?: unknown): void {
   const res = response as ScimResponseLike;
 
   if (typeof res.status === 'function' && typeof res.json === 'function') {
