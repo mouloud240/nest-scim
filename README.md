@@ -1,15 +1,28 @@
 # nest-scim
 
-> SCIM 2.0 (RFC 7643/7644) provisioning server library for NestJS, designed to sit next to your
-> existing SAML/SSO setup. The library ships the protocol — the controller, the four SCIM
-> endpoints, RFC 7644 PATCH semantics, filtering, pagination, and the SCIM error taxonomy — while
-> you provide only your own storage (a small service interface) and a user mapper, wired through
-> dependency injection.
+> SCIM 2.0 (RFC 7643/7644) User provisioning server library for NestJS.
 
-## Status
+## What it does
 
-In scaffolding (Milestone M0). See [docs/SCIM_SPEC.md](docs/SCIM_SPEC.md) for the full spec, the
-architecture, the decisions log, and the milestone plan.
+`@nest-scim/core` turns an existing SAML/SSO-enabled NestJS application into a SCIM 2.0 User
+provisioning server, so identity providers like Okta, Entra ID, OneLogin, or Salesforce can
+create, update, and delete your users automatically.
+
+The library owns the **entire protocol**:
+
+- `ScimModule.forRoot()` with a configurable base path and a Guard SPI for Bearer auth
+- The four standard controller endpoints: `/ServiceProviderConfig`, `/Users`, and `/Schemas`
+- Full RFC 7644 PATCH semantics (applied sequentially and atomically by the library)
+- SCIM attribute filtering (`eq/ne/co/sw/ew/pr`, `and/or/not`) and pagination
+- The SCIM error taxonomy, ListResponse envelope, and discovery documents
+
+You own **only your data**, through two small dependency-injection contracts:
+
+- A **user service** (`SCIM_USER_SERVICE`): fetch, save, and list users against any storage
+- A **user mapper** (`@ScimUserMapperToken()`): `toScim` / `fromScim` between your domain
+  model and the SCIM schema
+
+No protocol plumbing in user code — storage + mapping is all you write.
 
 ## Monorepo layout
 
@@ -31,4 +44,4 @@ pnpm changeset   # record a change for the next release
 
 ## License
 
-UNLICENSED for now — decided before the npm beta release (M5).
+UNLICENSED — not yet published to npm.
