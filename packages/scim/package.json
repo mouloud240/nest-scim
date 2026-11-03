@@ -29,7 +29,13 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@nestjs/common": ">=10 <12"
+    "@nestjs/common": ">=10 <12",
+    "reflect-metadata": "^0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "reflect-metadata": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@nestjs/common": "^11.0.0",
