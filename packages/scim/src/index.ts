@@ -31,6 +31,7 @@ export {
   mutability,
   uniqueness,
   notFound,
+  notImplemented,
   internal,
 } from './core/errors/factories';
 export type { ScimErrorFactoryOptions } from './core/errors/factories';
@@ -94,3 +95,33 @@ export type {
 } from './core/spc/provider-config';
 export { buildServiceProviderConfig } from './core/spc/merge-provider-config';
 export type { ScimSPCOverrides } from './core/spc/merge-provider-config';
+
+/* ── Attribute selection projection — RFC 7644 §3.9/§3.10 ─────────────── */
+export { projectScimResource, splitAttributePath, selectAttributePath } from './core/attributes/attributes';
+export type { ScimAttributeSelection } from './core/attributes/attributes';
+
+/* ── Nest module + SPI wiring — RFC 7644 §1–§3 routing layer ───────────── */
+export { ScimModule } from './nest/scim-module';
+export type { ScimModuleOptions, ModuleImport } from './nest/scim-module-options';
+export { SCIM_USER_SERVICE, SCIM_USER_MAPPER } from './nest/tokens';
+export {
+  ScimUserMapperToken,
+  getScimUserMapperMarker,
+  SCIM_USER_MAPPER_MARKER,
+} from './nest/scim-user-mapper.decorator';
+export type {
+  ScimUserService,
+  ScimUserMapper,
+  ScimUserServicePage,
+  ScimUserMeta,
+} from './nest/spi';
+export {
+  ScimUserAdapter,
+} from './nest/scim-user-adapter';
+export type {
+  AdapterResourceResult,
+  ScimUserAdapterOptions,
+  RawListQuery,
+} from './nest/scim-user-adapter';
+export { ScimExceptionFilter, INTERNAL_ERROR_DETAIL } from './nest/scim-exception.filter';
+export { SCIM_CONTENT_TYPE, writeScimJson, setLocationHeader } from './nest/scim-content';
