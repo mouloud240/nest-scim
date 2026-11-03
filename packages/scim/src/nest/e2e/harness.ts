@@ -7,7 +7,7 @@
  * with strict absence semantics (RFC 7644 §3.5.1).
  */
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, CanActivate, Type } from '@nestjs/common';
 import { ScimModule } from '../scim-module';
 import { ScimUserAdapter } from '../scim-user-adapter';
 import { ScimUserMapperToken } from '../scim-user-mapper.decorator';
@@ -99,14 +99,21 @@ export interface E2eApp {
 }
 
 export async function buildScimE2eApp(
-  moduleOptions: { basePath?: string } = {},
+  moduleOptions: {
+    basePath?: string;
+    /** Guards wired onto /Users routes ONLY (discovery stays open). */
+    auth?: Type<CanActivate> | Array<Type<CanActivate>>;
+    /** Service swap for error-corpus apps (e.g. an exploding SPI). */
+    userService?: Type<unknown>;
+  } = {},
 ): Promise<E2eApp> {
   const moduleRef = await Test.createTestingModule({
     imports: [
       ScimModule.forRoot({
         basePath: moduleOptions.basePath ?? '/scim/v2',
-        userService: InMemoryUserService,
+        userService: moduleOptions.userService ?? InMemoryUserService,
         userMapper: ExampleUserMapper,
+        auth: moduleOptions.auth,
       }),
     ],
   }).compile();
