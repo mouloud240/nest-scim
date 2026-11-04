@@ -8,7 +8,8 @@
  * - Table 9 keywords: `uniqueness` (409), `invalidFilter` (400),
  *   `invalidValue` (400) — while 404/401/501 carry NO keyword
  * - Table 8 status 501 = "service provider does not support the request
- *   operation, e.g., PATCH" → registered PATCH route answers 501 in M2
+ *   operation, e.g., PATCH" → M3: asserted via an SPC override app
+ *   (patch.supported: false); the default provider PATCHes for real
  * - §3.4.2 filter/sort params → implemented-or-501/400 discipline
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -190,17 +191,18 @@ describe('error taxonomy on the wire (RFC 7644 §3.12, Table 8/9)', () => {
     expect('scimType' in error).toBe(false);
   });
 
-  it('501 (NO scimType) on PATCH — Table 8 "e.g., PATCH" until M3 wires it', async () => {
-    // The PATCH handler refuses BEFORE any adapter/SPI call, so no user
-    // needs to exist: any id under /Users must answer the same 501.
+  it('PATCH on an unknown id → 404 BEFORE body validation (adapter 404-first order)', async () => {
+    // M3 note: since PatchOps ride the same app, the legacy "501 until M3"
+    // probe is replaced by this sanity check — the route is live and its
+    // ordering (501 → 404 → body) is assertable through real HTTP.
     const res = await server()
-      .patch('/scim/v2/Users/any-id-would-do')
-      .send({ schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'], Operations: [] })
-      .expect(501)
+      .patch('/scim/v2/Users/completely-unknown-id')
+      .send({ schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'], Operations: [{ op: 'remove', path: 'active' }] })
+      .expect(404)
       .expect('Content-Type', /application\/scim\+json/);
 
     const error = scimBody(res) as Record<string, unknown>;
-    expect(error.status).toBe('501');
+    expect(error.status).toBe('404');
     expect('scimType' in error).toBe(false);
   });
 
@@ -219,10 +221,43 @@ describe('error taxonomy on the wire (RFC 7644 §3.12, Table 8/9)', () => {
   });
 });
 
-describe('unknown internal failure → generic 500 (§3.12 discipline)', () => {
+describe('SPC override: patch.supported=false → Table 8 501 e2e (M3 wiring)', () => {
   let app: INestApplication;
   let close: () => Promise<void>;
   const server = () => request(app.getHttpServer());
+
+  beforeAll(async () => {
+    const built = await buildScimE2eApp({
+      serviceProviderConfig: { patch: { supported: false } },
+    });
+    app = built.app;
+    close = built.close;
+  });
+
+  afterAll(async () => {
+    await close();
+  });
+
+  it('501 (NO scimType) BEFORE any lookup — response mirrors the SPC claim', async () => {
+    const res = await server()
+      .patch('/scim/v2/Users/does-not-matter')
+      .send({
+        schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+        Operations: [{ op: 'remove', path: 'active' }],
+      })
+      .expect(501)
+      .expect('Content-Type', /application\/scim\+json/);
+
+    const error = scimBody(res) as Record<string, unknown>;
+    expect(error.schemas).toEqual([SCIM_ERROR_URN]);
+    expect(error.status).toBe('501');
+    expect('scimType' in error).toBe(false);
+  });
+});
+
+describe('unknown internal failure → generic 500 (§3.12 discipline)', () => {
+  let app: INestApplication;
+  let close: () => Promise<void>;  const server = () => request(app.getHttpServer());
 
   beforeAll(async () => {
     const built = await buildScimE2eApp({ userService: ExplodingUserService });

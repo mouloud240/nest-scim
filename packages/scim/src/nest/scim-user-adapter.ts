@@ -13,9 +13,9 @@
  * - §3.5.1  PUT: MUST NOT create (404 instead); returns 200 + full
  *   resource; required attributes (userName) MUST be present.
  * - §3.9  attributes/excludedAttributes projection, mutual exclusion.
- * - Table 8: 501 for unsupported operations (PATCH handler is swapped in
- *   at M3; the controller 501s until then). Sorting (§3.4.2.3) is not
- *   implemented in M2 → requests carrying sortBy reject with 501.
+ * - Table 8: 501 semantics live by the SPC claim (patch.supported
+ *   override → adapter 501s before any SPI work). Sorting (§3.4.2.3) is
+ *   not implemented in M2 → requests carrying sortBy reject with 501.
  */
 import {
   invalidFilter,
@@ -51,6 +51,14 @@ export interface ScimUserAdapterOptions<U> {
   basePath: string;
   /** List clamp — SHOULD mirror ServiceProviderConfig.filter.maxResults. */
   maxResultsPerPage: number;
+  /**
+   * Mirror of ServiceProviderConfig.patch.supported (RFC 7643 §5). When
+   * `false`, every PATCH answers 501 BEFORE any SPI call (Table 8: "the
+   * service provider does not support the request operation"). SPC wire
+   * claims stay honest with behavior — an IdP probing PATCH against an
+   * unsupported provider gets the documented 501, not a 404.
+   */
+  patchSupported?: boolean;
 }
 
 /**
@@ -233,6 +241,12 @@ export class ScimUserAdapter<U = unknown> {
     rawBody: unknown,
     parsed: ParsedListQuery = EMPTY_PARSED_LIST_QUERY,
   ): Promise<AdapterResourceResult> {
+    // §4: the SPC PATCH claim gates the feature — 501 precedes even the
+    // 404 lookup so unsupported providers answer uniformly (Table 8).
+    if (this.o.patchSupported === false) {
+      throw notImplemented({ detail: 'PATCH is not supported by this service provider.' });
+    }
+
     const existing = await this.mustFind(id);
     const current = this.resourceOf(existing);
 

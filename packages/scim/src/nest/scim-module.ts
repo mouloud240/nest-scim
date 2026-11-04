@@ -14,8 +14,9 @@
  * - `/Users` routes carry the user's `Option.auth` guards ONLY;
  *   discovery endpoints stay unguarded by default (rate limiting and
  *   global locking are bootstrap concerns of the application).
- * - PATCH route registered NOW, answering 501 per RFC 7644 Table 8
- *   ("does not support the request operation, e.g., PATCH") until M3.
+ * - PATCH follows D3/D7/D12 (SCIM_SPEC): adapter-owned §3.5.2 flow, with
+ *   a 501 whenever SPC override declares `patch.supported: false`
+ *   (Table 8) — route and ServiceProviderConfig never disagree.
  */
 import {
   Body,
@@ -42,7 +43,7 @@ import { buildListResponse } from '../core/responses/list-response';
 import { normalizeBasePath } from '../core/meta/meta';
 import { SCIM_USER_SCHEMA_DESCRIPTOR } from '../core/schemas/user-schema';
 import type { ScimSchemaDescriptor } from '../core/schemas/schema-types';
-import { notFound, notImplemented } from '../core/errors/factories';
+import { notFound } from '../core/errors/factories';
 import { setLocationHeader, writeScimJson } from './scim-content';
 import { ScimExceptionFilter } from './scim-exception.filter';
 import {
@@ -138,10 +139,17 @@ function createUsersControllerClass(
     }
 
     @Patch(':id')
-    patch(): void {
-      // RFC 7644 Table 8: 501 = "service provider does not support the
-      // request operation, e.g., PATCH". Handler swaps in at M3.
-      throw notImplemented({ detail: 'PATCH is not supported by this service provider yet.' });
+    async patch(
+      @Param('id') id: string,
+      @Body() payload: unknown,
+      @Query(ScimListQueryPipe) query: ParsedListQuery,
+      @Res() res: ControllerResponse,
+    ): Promise<void> {
+      // §3.5.2: success = 200 + resulting resource (never 204 — one code
+      // path, and MUST 200 whenever ?attributes was requested). 501 comes
+      // from the adapter when the SPC declares patch unsupported.
+      const result = await this.adapter.patch(id, payload, query);
+      writeScimJson(res, 200, result.resource);
     }
 
     @Delete(':id')
@@ -233,6 +241,7 @@ export class ScimModule {
             userMapper: userMapper as never,
             basePath,
             maxResultsPerPage: providerConfig.filter.maxResults,
+            patchSupported: providerConfig.patch.supported,
           }),
       },
       ...(options.providers ?? []),

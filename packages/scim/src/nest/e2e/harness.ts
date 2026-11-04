@@ -14,6 +14,7 @@ import { ScimUserMapperToken } from '../scim-user-mapper.decorator';
 import type { ScimUserService, ScimUserMapper } from '../spi';
 import type { Page } from '../../core/types/list';
 import { SCIM_USER_SCHEMA, ScimUserCreate } from '../../core/types/user';
+import type { ScimSPCOverrides } from '../../core/spc/merge-provider-config';
 
 interface DemoUser {
   key: string;
@@ -105,6 +106,8 @@ export async function buildScimE2eApp(
     auth?: Type<CanActivate> | Array<Type<CanActivate>>;
     /** Service swap for error-corpus apps (e.g. an exploding SPI). */
     userService?: Type<unknown>;
+    /** SPC overrides for e.g. patch-disabled providers (RFC 7643 §5). */
+    serviceProviderConfig?: ScimSPCOverrides;
   } = {},
 ): Promise<E2eApp> {
   const moduleRef = await Test.createTestingModule({
@@ -114,6 +117,7 @@ export async function buildScimE2eApp(
         userService: moduleOptions.userService ?? InMemoryUserService,
         userMapper: ExampleUserMapper,
         auth: moduleOptions.auth,
+        serviceProviderConfig: moduleOptions.serviceProviderConfig,
       }),
     ],
   }).compile();
