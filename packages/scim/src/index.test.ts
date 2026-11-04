@@ -13,6 +13,7 @@ import {
   setLocationHeader,
   notImplemented,
   projectScimResource,
+  ScimListQueryPipe,
 } from './index';
 import type {
   ScimModuleOptions,
@@ -35,6 +36,7 @@ describe('M2 nest exports are wired', () => {
     expect(typeof ScimUserMapperToken).toBe('function');
     expect(typeof ScimUserAdapter).toBe('function');
     expect(typeof ScimExceptionFilter).toBe('function');
+    expect(typeof ScimListQueryPipe).toBe('function');
     expect(SCIM_CONTENT_TYPE).toBe('application/scim+json');
     expect(typeof writeScimJson).toBe('function');
     expect(typeof setLocationHeader).toBe('function');

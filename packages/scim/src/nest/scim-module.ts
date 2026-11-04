@@ -46,9 +46,10 @@ import { notFound, notImplemented } from '../core/errors/factories';
 import { setLocationHeader, writeScimJson } from './scim-content';
 import { ScimExceptionFilter } from './scim-exception.filter';
 import {
-  RawListQuery,
+  ParsedListQuery,
   ScimUserAdapter,
 } from './scim-user-adapter';
+import { ScimListQueryPipe } from './scim-list-query.pipe';
 import { SCIM_USER_MAPPER, SCIM_USER_SERVICE } from './tokens';
 import type { ScimModuleOptions } from './scim-module-options';
 
@@ -99,17 +100,20 @@ function createUsersControllerClass(
     ) {}
 
     @Get()
-    async list(@Res() res: ControllerResponse, @Query() query: unknown): Promise<void> {
-      writeScimJson(res, 200, await this.adapter.list(query as RawListQuery));
+    async list(
+      @Res() res: ControllerResponse,
+      @Query(ScimListQueryPipe) query: ParsedListQuery,
+    ): Promise<void> {
+      writeScimJson(res, 200, await this.adapter.list(query));
     }
 
     @Get(':id')
     async detail(
       @Param('id') id: string,
       @Res() res: ControllerResponse,
-      @Query() query: unknown,
+      @Query(ScimListQueryPipe) query: ParsedListQuery,
     ): Promise<void> {
-      const result = await this.adapter.detail(id, query as RawListQuery);
+      const result = await this.adapter.detail(id, query);
       writeScimJson(res, 200, result.resource);
     }
 

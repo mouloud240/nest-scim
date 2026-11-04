@@ -51,15 +51,46 @@ export interface ScimUserAdapterOptions<U> {
   maxResultsPerPage: number;
 }
 
-/** List query string parameters accepted by the list flow (M2 subset). */
+/**
+ * The WIRE query as sent by the HTTP layer — raw, untrusted, deliberately
+ * `unknown`-valued. This is NOT the type the controllers consume; the
+ * controllers receive {@link ParsedListQuery} via the pipe.
+ */
 export interface RawListQuery extends ScimAttributeSelection {
   startIndex?: unknown;
   count?: unknown;
-  /** Present (non-empty) → 400 invalidFilter until M4 wires scim2-parse-filter. */
   filter?: unknown;
-  /** Present → 501 (§3.4.2.3 sorting not supported in M2). */
   sortBy?: unknown;
   sortOrder?: unknown;
+}
+
+/**
+ * The wire query AFTER `parseListQuery` — typed, normalized, RFC-verified
+ * (§3.4.2.4 Table 6). This is the single shape `list`/`detail` consume:
+ * interpretation happens here exactly once; the serving flows below are
+ * pure over parsed input.
+ */
+export interface ParsedListQuery extends ScimAttributeSelection {
+  /** Normalized 1-based index, default 1; garbage/negative → 1. */
+  startIndex: number;
+  /** Normalized size, default = provider maximum; negative → 0. */
+  count: number;
+  /**
+   * Non-empty filter raw value — ALWAYS `undefined` in M2, because
+   * `parseListQuery` rejects it with 400 invalidFilter (the M3 filter
+   * pipeline replaces the rejection with actual parsing, filling this).
+   */
+  filter?: undefined;
+  /**
+   * ALWAYS `undefined` in M2 — presence of either → 501 notImplemented
+   * (§3.4.2.3 sorting is not supported yet); M3+ may fill these.
+   */
+  sortBy?: undefined;
+  sortOrder?: undefined;
+  /** §3.4.2: envelope carries pagination attrs only when requested. */
+  explicitStartIndex: boolean;
+  /** §3.4.2: envelope carries pagination attrs only when requested. */
+  explicitCount: boolean;
 }
 
 /** Payload guard: schemas attribute naming the core User (RFC 7644 §3.3). */
@@ -110,7 +141,7 @@ function parseCount(value: unknown, maxResults: number): number {
  * RFC 7644 §3.4 attribute-selection params, validated/normalized.
  * Non-string / comma-string forms are split exactly like wire clients send.
  */
-function parseSelection(raw: RawListQuery): ScimAttributeSelection {
+function parseSelection(raw: Partial<RawListQuery>): ScimAttributeSelection {
   const selection = {
     attributes: firstList(raw.attributes),
     excludedAttributes: firstList(raw.excludedAttributes),
@@ -124,6 +155,17 @@ function firstList(value: unknown): string[] | undefined {
   const items = raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
   return items.length > 0 ? items : undefined;
 }
+
+/**
+ * Parsed query with nothing selected — the no-query convenience default
+ * for `detail` (where startIndex/count play no role).
+ */
+export const EMPTY_PARSED_LIST_QUERY: ParsedListQuery = {
+  startIndex: 1,
+  count: 0,
+  explicitStartIndex: false,
+  explicitCount: false,
+};
 
 export class ScimUserAdapter<U = unknown> {
   constructor(private readonly o: ScimUserAdapterOptions<U>) {}
@@ -140,11 +182,11 @@ export class ScimUserAdapter<U = unknown> {
 
   /* ── Detail — RFC 7644 §3.4.1 ───────────────────────────────────────── */
 
-  async detail(id: string, rawQuery: RawListQuery = {}): Promise<AdapterResourceResult> {
+  async detail(id: string, parsed: ParsedListQuery = EMPTY_PARSED_LIST_QUERY): Promise<AdapterResourceResult> {
     const { resource, location } = await this.resourceFromId(id);
     return {
       location,
-      resource: projectScimResource(resource, parseSelection(rawQuery)),
+      resource: projectScimResource(resource, parsed),
     };
   }
 
@@ -175,33 +217,59 @@ export class ScimUserAdapter<U = unknown> {
 
   /* ── List — RFC 7644 §3.4.2 (+3.4.2.4 pagination, 3.9 selection) ────── */
 
-  async list(rawQuery: RawListQuery = {}): Promise<ScimListResponse<ScimUserResource>> {
+  /**
+   * Wire → {@link ParsedListQuery}, the single interpretation point for
+   * list/query-string inputs (parse, don't validate). Everything the
+   * serving flows might get wrong about raw query-string values lives
+   * here: coercion, clamping, §3.4.2.4 defaults, and unsupported-param
+   * rejections (§3.4 filter → 400 invalidFilter, sorting → 501). Throws
+   * ScimError synchronously — the controller pipe surfaces these through
+   * the §3.12 exception filter unchanged.
+   */
+  parseListQuery(raw: unknown): ParsedListQuery {
+    const rawQuery = (raw ?? {}) as Partial<RawListQuery>;
+
+    // Filter → 400 while the M2 gate stands; M3 replaces the throw with
+    // scim2-parse-filter evaluation (message kept stable for the wire).
     if (firstScalar(rawQuery.filter) !== undefined && rawQuery.filter !== '') {
       throw invalidFilter({
         detail: 'Filtering is not yet enabled on this service provider (planned for the next release).',
       });
     }
-    if (firstScalar(rawQuery.sortBy) !== undefined || firstScalar(rawQuery.sortOrder) !== undefined) {
+    // Sorting → 501, Table 8 ("does not support the request operation").
+    if (
+      firstScalar(rawQuery.sortBy) !== undefined ||
+      firstScalar(rawQuery.sortOrder) !== undefined
+    ) {
       throw notImplemented({
         detail: 'Sorting (sortBy/sortOrder) is not supported by this service provider.',
       });
     }
 
-    const selection = parseSelection(rawQuery);
-    const startIndex = parseStartIndex(rawQuery.startIndex);
-    const count = parseCount(rawQuery.count, this.o.maxResultsPerPage);
+    return {
+      ...parseSelection(rawQuery),
+      startIndex: parseStartIndex(rawQuery.startIndex),
+      count: parseCount(rawQuery.count, this.o.maxResultsPerPage),
+      // Presence flags read the RAW record (key present ⇒ flagged), so a
+      // garbage value still marks the query as explicitly paginated —
+      // matching §3.4.2's "partial results" envelope semantics.
+      explicitStartIndex: 'startIndex' in rawQuery,
+      explicitCount: 'count' in rawQuery,
+    };
+  }
 
-    const page = await this.o.userService.list({ startIndex, count });
+  async list(parsed: ParsedListQuery): Promise<ScimListResponse<ScimUserResource>> {
+    const page = await this.o.userService.list({ startIndex: parsed.startIndex, count: parsed.count });
     const resources = page.items.map((domain) => this.resourceOf(domain));
-    const projected = resources.map((resource) => projectScimResource(resource, selection));
+    const projected = resources.map((resource) => projectScimResource(resource, parsed));
 
     // Pagination attrs REQUIRED whenever a page was explicitly requested
     // (§3.4.2: partial results) — builders derive the rest.
-    const explicitlyPaged = rawQuery.count !== undefined || rawQuery.startIndex !== undefined;
+    const explicitlyPaged = parsed.explicitCount || parsed.explicitStartIndex;
     return buildListResponse({
       totalResults: page.totalResults,
       items: projected,
-      startIndex,
+      startIndex: parsed.startIndex,
       paginated: explicitlyPaged ? true : undefined,
     });
   }

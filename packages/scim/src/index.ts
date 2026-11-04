@@ -122,6 +122,9 @@ export type {
   AdapterResourceResult,
   ScimUserAdapterOptions,
   RawListQuery,
+  ParsedListQuery,
 } from './nest/scim-user-adapter';
+export { EMPTY_PARSED_LIST_QUERY } from './nest/scim-user-adapter';
+export { ScimListQueryPipe } from './nest/scim-list-query.pipe';
 export { ScimExceptionFilter, INTERNAL_ERROR_DETAIL } from './nest/scim-exception.filter';
 export { SCIM_CONTENT_TYPE, writeScimJson, setLocationHeader } from './nest/scim-content';

@@ -3,7 +3,7 @@ import { ScimError } from '../core/errors/scim-error';
 import { Page } from '../core/types/list';
 import { SCIM_USER_SCHEMA, ScimUserCreate } from '../core/types/user';
 import { ScimUserMapper, ScimUserService } from './spi';
-import { ScimUserAdapter } from './scim-user-adapter';
+import { EMPTY_PARSED_LIST_QUERY, ScimUserAdapter } from './scim-user-adapter';
 
 /* ── In-memory SPI stand-in ──────────────────────────────────────────── */
 
@@ -146,7 +146,7 @@ describe('detail flow (RFC 7644 §3.4.1)', () => {
 
   it('supports the §3.9 attributes projection on detail', async () => {
     const { adapter } = makeMemorySuite([bjensen]);
-    const result = await adapter.detail('2819c223', { attributes: ['userName'] });
+    const result = await adapter.detail('2819c223', adapter.parseListQuery({ attributes: ['userName'] }));
 
     expect(result.resource).toEqual({
       schemas: [SCIM_USER_SCHEMA],
@@ -204,6 +204,95 @@ describe('delete flow (RFC 7644 §3.5.3)', () => {
   });
 });
 
+describe('parseListQuery (wire → typed, RFC §3.4.2.4 / §3.9)', () => {
+  it('normalizes startIndex: absent/garbage/negative all → 1', () => {
+    const { adapter } = makeMemorySuite();
+
+    expect(adapter.parseListQuery({}).startIndex).toBe(1);
+    expect(adapter.parseListQuery({ startIndex: '5' }).startIndex).toBe(5); // 1-based, raw
+    expect(adapter.parseListQuery({ startIndex: 'abc' }).startIndex).toBe(1);
+    expect(adapter.parseListQuery({ startIndex: '0' }).startIndex).toBe(1);
+    expect(adapter.parseListQuery({ startIndex: '-3' }).startIndex).toBe(1);
+  });
+
+  it('normalizes count: absent → provider max, garbage → max, <0 → 0, clamped to max', () => {
+    const { adapter } = makeMemorySuite();
+
+    expect(adapter.parseListQuery({}).count).toBe(200);
+    expect(adapter.parseListQuery({ count: 'abc' }).count).toBe(200);
+    expect(adapter.parseListQuery({ count: '-2' }).count).toBe(0);
+    expect(adapter.parseListQuery({ count: '999999' }).count).toBe(200);
+    expect(adapter.parseListQuery({ count: '10' }).count).toBe(10);
+  });
+
+  it('records pagination PRESENCE from the raw keys, not the parsed values', () => {
+    const { adapter } = makeMemorySuite();
+
+    const absent = adapter.parseListQuery({});
+    expect(absent.explicitStartIndex).toBe(false);
+    expect(absent.explicitCount).toBe(false);
+
+    const paged = adapter.parseListQuery({ startIndex: '2', count: '1' });
+    expect(paged.explicitStartIndex).toBe(true);
+    expect(paged.explicitCount).toBe(true);
+
+    // garbage presence is still presence — §3.4.2 envelope semantics
+    const garbage = adapter.parseListQuery({ count: 'nonsense' });
+    expect(garbage.explicitCount).toBe(true);
+    expect(garbage.count).toBe(200);
+  });
+
+  it('comma-splits the §3.9 attribute selection lists', () => {
+    const { adapter } = makeMemorySuite();
+
+    expect(adapter.parseListQuery({ attributes: 'userName, name.givenName ' }).attributes).toEqual([
+      'userName',
+      'name.givenName',
+    ]);
+    expect(adapter.parseListQuery({ attributes: ',' }).attributes).toBeUndefined();
+    expect(adapter.parseListQuery({ excludedAttributes: 'emails' }).excludedAttributes).toEqual(['emails']);
+  });
+
+  it('rejects a present non-empty filter with 400 invalidFilter (M2 gate)', () => {
+    const { adapter } = makeMemorySuite();
+
+    try {
+      adapter.parseListQuery({ filter: 'userName pr' });
+      expect.unreachable();
+    } catch (error) {
+      expect((error as ScimError).scimType).toBe('invalidFilter');
+    }
+    // an EMPTY filter value is treated as no filter requested
+    expect(() => adapter.parseListQuery({ filter: '' })).not.toThrow();
+  });
+
+  it('rejects sortBy/sortOrder presence with 501 and no scimType', () => {
+    const { adapter } = makeMemorySuite();
+
+    for (const query of [{ sortBy: 'userName' }, { sortOrder: 'descending' }]) {
+      try {
+        adapter.parseListQuery(query);
+        expect.unreachable();
+      } catch (error) {
+        expect(error).toBeInstanceOf(ScimError);
+        expect((error as ScimError).status).toBe(501);
+        expect((error as ScimError).scimType).toBeUndefined();
+      }
+    }
+  });
+
+  it('parses nothing when handed undefined (controllers may omit @Query binding data)', () => {
+    const { adapter } = makeMemorySuite();
+    const parsed = adapter.parseListQuery(undefined);
+
+    expect(parsed.startIndex).toBe(1);
+    expect(parsed.count).toBe(200);
+    expect(parsed.attributes).toBeUndefined();
+    expect(parsed.explicitStartIndex).toBe(false);
+    expect(parsed).not.toBe(EMPTY_PARSED_LIST_QUERY);
+  });
+});
+
 describe('list flow (RFC 7644 §3.4.2 + §3.4.2.4)', () => {
   function row(n: number): Row {
     return { id: `id-${n}`, userName: `user${n}`, email: null, createdAt: CREATED_AT };
@@ -215,7 +304,7 @@ describe('list flow (RFC 7644 §3.4.2 + §3.4.2.4)', () => {
 
   it('serves 1-based pages with RFC envelope keys', async () => {
     const { adapter } = suiteWith(row(1), row(2), row(3), row(4), row(5));
-    const body = await adapter.list({ startIndex: '2', count: '2' });
+    const body = await adapter.list(adapter.parseListQuery({ startIndex: '2', count: '2' }));
 
     expect(body.startIndex).toBe(2);
     expect(body.itemsPerPage).toBe(2);
@@ -226,8 +315,8 @@ describe('list flow (RFC 7644 §3.4.2 + §3.4.2.4)', () => {
 
   it('startIndex defaults to 1 and interprets <1 as 1 (Table 6)', async () => {
     const { adapter } = suiteWith(row(1), row(2));
-    const negative = await adapter.list({ startIndex: '-3', count: '1' });
-    const garbage = await adapter.list({ startIndex: 'abc', count: '1' });
+    const negative = await adapter.list(adapter.parseListQuery({ startIndex: '-3', count: '1' }));
+    const garbage = await adapter.list(adapter.parseListQuery({ startIndex: 'abc', count: '1' }));
 
     expect(negative.startIndex).toBe(1);
     expect(negative.Resources?.[0].userName).toBe('user1');
@@ -237,20 +326,20 @@ describe('list flow (RFC 7644 §3.4.2 + §3.4.2.4)', () => {
   it('count defaults to the provider maximum and clamps to it', async () => {
     const { adapter } = suiteWith(...Array.from({ length: 250 }, (_, i) => row(i + 1)));
 
-    const body = await adapter.list({});
+    const body = await adapter.list(adapter.parseListQuery({}));
     expect(body.totalResults).toBe(250);
     expect(body.itemsPerPage).toBe(200); // maxResultsPerPage default, §3.4.2.4
 
-    const body2 = await adapter.list({ count: '999999' });
+    const body2 = await adapter.list(adapter.parseListQuery({ count: '999999' }));
     expect(body2.itemsPerPage).toBe(200); // clamped
 
-    const body3 = await adapter.list({ count: '10' });
+    const body3 = await adapter.list(adapter.parseListQuery({ count: '10' }));
     expect(body3.itemsPerPage).toBe(10);
   });
 
   it('negative count is interpreted as 0 (Table 6)', async () => {
     const { adapter } = suiteWith(row(1));
-    const body = await adapter.list({ count: '-2' });
+    const body = await adapter.list(adapter.parseListQuery({ count: '-2' }));
 
     expect(body.itemsPerPage).toBe(0);
     expect(body.totalResults).toBe(1);
@@ -259,7 +348,7 @@ describe('list flow (RFC 7644 §3.4.2 + §3.4.2.4)', () => {
 
   it('unspecified pagination + exact-fit totals stays an unpaginated envelope', async () => {
     const { adapter } = suiteWith(row(1));
-    const body = await adapter.list({});
+    const body = await adapter.list(adapter.parseListQuery({}));
 
     expect(body).toEqual({
       schemas: ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
@@ -269,31 +358,38 @@ describe('list flow (RFC 7644 §3.4.2 + §3.4.2.4)', () => {
     expect('startIndex' in body).toBe(false);
   });
 
-  it('400 invalidFilter while filters are unimplemented (M2 gate)', async () => {
+  it('400 invalidFilter while filters are unimplemented (M2 gate) — rejected at PARSE time', () => {
     const { adapter } = suiteWith();
-    await expect(adapter.list({ filter: 'userName pr' })).rejects.toMatchObject({
-      status: 400,
-      scimType: 'invalidFilter',
-      detail: expect.stringContaining('not yet enabled'),
-    });
+    // parseListQuery throws synchronously; the pipe surfaces it through
+    // the §3.12 filter, so the wire shape stays identical (validated by e2e).
+    try {
+      adapter.parseListQuery({ filter: 'userName pr' });
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ScimError);
+      expect((error as ScimError).status).toBe(400);
+      expect((error as ScimError).scimType).toBe('invalidFilter');
+      expect((error as ScimError).detail).toContain('not yet enabled');
+    }
   });
 
-  it('501 for sortBy/sortOrder (§3.4.2.3 unimplemented in M2; Table 8 501)', async () => {
+  it('501 for sortBy/sortOrder (§3.4.2.3 unimplemented in M2) — rejected at PARSE time', () => {
     const { adapter } = suiteWith(row(1));
     for (const query of [{ sortBy: 'userName' }, { sortOrder: 'ascending' }]) {
-      const error = await adapter.list(query).then(
-        () => { throw new Error('expected ScimError 501'); },
-        (thrown: unknown) => thrown,
-      );
-      expect(error).toBeInstanceOf(ScimError);
-      expect((error as ScimError).status).toBe(501);
-      expect((error as ScimError).scimType).toBeUndefined();
+      try {
+        adapter.parseListQuery(query);
+        expect.unreachable();
+      } catch (error) {
+        expect(error).toBeInstanceOf(ScimError);
+        expect((error as ScimError).status).toBe(501);
+        expect((error as ScimError).scimType).toBeUndefined();
+      }
     }
   });
 
   it('list items carry commons and getMeta-driven meta stamps', async () => {
     const { adapter } = suiteWith(row(1));
-    const body = await adapter.list({ count: '1' });
+    const body = await adapter.list(adapter.parseListQuery({ count: '1' }));
 
     expect(body.Resources?.[0].meta).toEqual({
       resourceType: 'User',
@@ -305,7 +401,7 @@ describe('list flow (RFC 7644 §3.4.2 + §3.4.2.4)', () => {
 
   it('applies §3.9 attribute selection against every page row', async () => {
     const { adapter } = suiteWith(row(1), row(2));
-    const body = await adapter.list({ attributes: ['userName'] });
+    const body = await adapter.list(adapter.parseListQuery({ attributes: ['userName'] }));
 
     for (const resource of body.Resources ?? []) {
       expect(Object.keys(resource)).toEqual(expect.arrayContaining(['schemas', 'id', 'userName']));
@@ -334,7 +430,7 @@ describe('password never leaks (RFC 7643 §7.2 writeOnly)', () => {
     expect('password' in detail.resource).toBe(false);
     expect(JSON.stringify(detail.resource)).not.toContain('secret');
 
-    const listed = await leakyAdapter.list({});
+    const listed = await leakyAdapter.list(EMPTY_PARSED_LIST_QUERY);
     expect('password' in (listed.Resources?.[0] ?? {})).toBe(false);
   });
 });
