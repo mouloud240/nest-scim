@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ScimError } from '../core/errors/scim-error';
 import { Page } from '../core/types/list';
+import { PATCH_OP_SCHEMA, PatchRequest } from '../core/types/patch';
 import { SCIM_USER_SCHEMA, ScimUserCreate } from '../core/types/user';
 import { ScimUserMapper, ScimUserService } from './spi';
 import { EMPTY_PARSED_LIST_QUERY, ScimUserAdapter } from './scim-user-adapter';
@@ -457,6 +458,111 @@ describe('meta honesty (no fabricated timestamps)', () => {
     expect(result.resource.meta).toEqual({
       resourceType: 'User',
       location: '/scim/v2/Users/2819c223',
+    });
+  });
+});
+
+describe('patch flow (RFC 7644 §3.5.2)', () => {
+  /** Wire PATCH body helper — schemas URN per lines 1804–1806. */
+  function patchBody(operations: unknown[]): PatchRequest {
+    return { schemas: [PATCH_OP_SCHEMA], Operations: operations as PatchRequest['Operations'] };
+  }
+
+  it('applies ops through the mapper round-trip and returns the full resource', async () => {
+    const { adapter } = makeMemorySuite([bjensen]);
+    const result = await adapter.patch('2819c223', patchBody([
+      { op: 'replace', path: 'emails[type eq "work"].value', value: 'new@x.com' },
+    ]));
+
+    expect(result.resource.userName).toBe('bjensen'); // untouched attr survives
+    expect(result.location).toBe('/scim/v2/Users/2819c223');
+    const emails = result.resource.emails as Array<{ value?: string; type?: string }>;
+    expect(emails).toEqual([{ value: 'new@x.com', type: 'work' }]);
+  });
+
+  it('404 must come FIRST — even before body validation (Table 8)', async () => {
+    const { adapter } = makeMemorySuite([]);
+    await expect(adapter.patch('ghost', { totally: 'broken' })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('400 invalidSyntax for a body that omits the PatchOp URN or Operations', async () => {
+    const { adapter } = makeMemorySuite([bjensen]);
+    await expect(adapter.patch('2819c223', { Operations: [] })).rejects.toMatchObject({
+      status: 400,
+      scimType: 'invalidSyntax',
+    });
+    await expect(adapter.patch('2819c223', { schemas: [PATCH_OP_SCHEMA] })).rejects.toMatchObject({
+      status: 400,
+      scimType: 'invalidSyntax',
+    });
+  });
+
+  it('is ATOMIC at the store: a failing op 2 leaves the row untouched and update() never runs', async () => {
+    const { adapter, store } = makeMemorySuite([bjensen]);
+    await expect(adapter.patch('2819c223', patchBody([
+      { op: 'replace', path: 'displayName', value: 'Halfway Name' }, // op 1 succeeds
+      { op: 'replace', path: 'emails[type ne "work"].value', value: 'x@y.z' }, // op 2: noTarget
+    ]))).rejects.toMatchObject({ status: 400, scimType: 'noTarget' });
+
+    expect(store.updated).toBe(0); // the ONLY write never ran (§3.5.2 line 1931)
+    expect(store.rows[0]?.email).toBe('b@x.com'); // pre-patch state survives
+    const after = await adapter.detail('2819c223', EMPTY_PARSED_LIST_QUERY);
+    expect('displayName' in after.resource).toBe(false); // no half-applied state
+  });
+
+  it('409 uniqueness when the patch MOVES userName onto another row (Table 8)', async () => {
+    const { adapter, store } = makeMemorySuite([
+      bjensen,
+      { id: 'other-row', userName: 'taken', email: null, createdAt: CREATED_AT },
+    ]);
+    await expect(adapter.patch('2819c223', patchBody([
+      { op: 'replace', path: 'userName', value: 'taken' },
+    ]))).rejects.toMatchObject({ status: 409, scimType: 'uniqueness' });
+    expect(store.updated).toBe(0);
+
+    // renaming to a FREE name is fine
+    const renamed = await adapter.patch('2819c223', patchBody([
+      { op: 'replace', path: 'userName', value: 'free-name' },
+    ]));
+    expect(renamed.resource.userName).toBe('free-name');
+  });
+
+  it('400 mutability when a patch unassigns the REQUIRED userName (§3.5.2.2)', async () => {
+    const { adapter, store } = makeMemorySuite([bjensen]);
+    await expect(adapter.patch('2819c223', patchBody([
+      { op: 'remove', path: 'userName' },
+    ]))).rejects.toMatchObject({ status: 400, scimType: 'mutability' });
+    expect(store.updated).toBe(0);
+  });
+
+  it('remove ops unassign through the strict-absence round-trip (empties the attr)', async () => {
+    const { adapter } = makeMemorySuite([bjensen]);
+    const result = await adapter.patch('2819c223', patchBody([
+      { op: 'remove', path: 'emails[type eq "work"]' }, // engine: matches, removes record
+    ]));
+    expect(result.resource.emails).toBeUndefined(); // mapper strict-absence cleared
+  });
+
+  it('does NOT let wire ops touch commons (id/meta readOnly, RFC 7643 §3.1)', async () => {
+    const { adapter } = makeMemorySuite([bjensen]);
+    const result = await adapter.patch('2819c223', patchBody([
+      { op: 'add', value: { meta: { location: 'https://evil.example' } } }, // resource-level add
+    ]));
+    expect(result.resource.meta?.location).toBe('/scim/v2/Users/2819c223'); // server-owned
+  });
+
+  it('projects ?attributes on the 200 response (§3.9 — MUST honor attributes)', async () => {
+    const { adapter } = makeMemorySuite([bjensen]);
+    const result = await adapter.patch(
+      '2819c223',
+      patchBody([{ op: 'replace', path: 'displayName', value: 'Babs' }]),
+      adapter.parseListQuery({ attributes: ['userName'] }),
+    );
+    // only the selected attribute survives the projection (§3.9)
+    expect(result.resource).toEqual({
+      schemas: [SCIM_USER_SCHEMA],
+      id: '2819c223',
+      userName: 'bjensen',
     });
   });
 });

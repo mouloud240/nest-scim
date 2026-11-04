@@ -21,6 +21,7 @@ import {
   invalidFilter,
   invalidSyntax,
   invalidValue,
+  mutability,
   notFound,
   notImplemented,
   uniqueness,
@@ -32,6 +33,7 @@ import { SCIM_USER_SCHEMA, ScimUser, ScimUserCreate, ScimUserResource } from '..
 import type { ScimListResponse } from '../core/types/list';
 import { projectScimResource } from '../core/attributes/attributes';
 import type { ScimAttributeSelection } from '../core/attributes/attributes';
+import { applyPatchRequest } from '../core/patch/apply';
 import type { ScimUserMapper, ScimUserService } from './spi';
 
 /** Adapter-owned result of a single-resource flow. */
@@ -206,6 +208,64 @@ export class ScimUserAdapter<U = unknown> {
     const domain = this.o.userMapper.fromScim(payload, existing);
     const updated = await this.o.userService.update(domain);
     return this.resourceResult(updated);
+  }
+
+  /* ── Patch — RFC 7644 §3.5.2 (atomic; success = 200 + resource) ─────── */
+
+  /**
+   * §3.5.2 flow verified against docs/rfc/rfc7644.txt:
+   * mustFind → 404 first (Table 8, resource must exist); commons
+   * (id/meta — readOnly, RFC 7643 §3.1) stripped BEFORE ops run; the op
+   * sequence applies on a COPY inside `applyPatchRequest`, so a failing
+   * op *n* aborts before there is anything to write — §3.5.2 atomicity
+   * (line 1931) with `service.update()` as the ONLY write, at the end.
+   *
+   * Mapper round-trip (strict-absence, SCIM_SPEC rules 1–7): the patch
+   * starts from the CURRENT FULL projection, so keys absent after the
+   * sequence mean "the ops unassigned this" — precisely the deletion
+   * signal `fromScim(scim, existing)` needs. Assigning a required
+   * attribute to null/unassigned fails with `mutability` (§3.5.2.2 tail:
+   * required/readOnly cannot be unassigned); a userName MOVE conflicts
+   * with another row → 409 uniqueness (Table 8, same rule as PUT).
+   */
+  async patch(
+    id: string,
+    rawBody: unknown,
+    parsed: ParsedListQuery = EMPTY_PARSED_LIST_QUERY,
+  ): Promise<AdapterResourceResult> {
+    const existing = await this.mustFind(id);
+    const current = this.resourceOf(existing);
+
+    const { id: _roId, meta: _roMeta, ...patchable } = current;
+    const patched = applyPatchRequest(patchable as unknown as Record<string, unknown>, rawBody);
+
+    // §4.1.1: userName is REQUIRED — a patch that unassigns it (or
+    // empties it) fails with `mutability` per §3.5.2.2's last rule.
+    const nextUserName = patched.userName;
+    if (
+      nextUserName === undefined ||
+      nextUserName === null ||
+      (typeof nextUserName === 'string' && nextUserName.trim().length === 0)
+    ) {
+      throw mutability({ detail: 'The "userName" attribute is required and cannot be unassigned by a patch operation.' });
+    }
+
+    // Table 8: a MOVE of userName onto someone else's name → 409.
+    if (nextUserName !== current.userName) {
+      await this.assertUserNameFree(nextUserName as string, id);
+    }
+
+    const domain = this.o.userMapper.fromScim(
+      { schemas: [SCIM_USER_SCHEMA], ...(patched as Record<string, unknown>) } as unknown as ScimUserCreate,
+      existing,
+    );
+    const updated = await this.o.userService.update(domain); // the ONLY write
+    const result = this.resourceResult(updated);
+
+    return {
+      location: result.location,
+      resource: projectScimResource(result.resource, parsed), // §3.9 selection
+    };
   }
 
   /* ── Delete — RFC 7644 §3.5.3 ───────────────────────────────────────── */
