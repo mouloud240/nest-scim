@@ -1,0 +1,17 @@
+{
+  "description": "Entra ID quirk: resource-level add carrying ALL mapped attributes on every sync cycle (path omitted → whole-resource patch). Attribute-less 'add' APPENDS to existing multi-valued attrs (§3.5.2.1) while scalars overwrite.",
+  "expects": { "status": 200, "targetPath": "resource-level add of the full attribute set", "final": "scalars set; emails appended" },
+  "request": {
+    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    "Operations": [
+      {
+        "op": "add",
+        "value": {
+          "userName": "bjensen@example.com",
+          "displayName": "Babs Jensen - full sync",
+          "emails": [{ "value": "bjensen@example.com", "type": "work", "primary": true }]
+        }
+      }
+    ]
+  }
+}

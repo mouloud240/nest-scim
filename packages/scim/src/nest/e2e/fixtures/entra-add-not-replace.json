@@ -1,0 +1,10 @@
+{
+  "description": "Entra ID quirk: sends 'add' where 'replace' would be correct — add on an EXISTING attribute must overwrite (§3.5.2.1: target exists ⇒ value replaced).",
+  "expects": { "status": 200, "targetPath": "add-not-replace on displayName", "final": "displayName overwritten" },
+  "request": {
+    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    "Operations": [
+      { "op": "add", "path": "displayName", "value": "Babs (Entra sync)" }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "description": "RFC §3.5.2: op value is semantically case-insensitive; Entra/Okta send mixed casing ('Replace', 'REMOVE', 'ADD').",
+  "expects": { "status": 200, "targetPath": "case-normalization before the engine", "final": "active ignored, emails cleared" },
+  "request": {
+    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    "Operations": [
+      { "op": "Replace", "path": "displayName", "value": "Case Insensitive" },
+      { "op": "REMOVE", "path": "emails[type eq \"work\"]" }
+    ]
+  }
+}

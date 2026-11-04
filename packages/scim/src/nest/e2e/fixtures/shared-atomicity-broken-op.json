@@ -1,0 +1,11 @@
+{
+  "description": "Atomicity probe: op 1 succeeds, op 2 targets nothing (ne-comparison can't convert to add) → 400 noTarget and the FIRST op must not persist (RFC line 1931).",
+  "expects": { "status": 400, "scimType": "noTarget", "targetPath": "broken second op", "final": "store untouched" },
+  "request": {
+    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    "Operations": [
+      { "op": "replace", "path": "displayName", "value": "Halfway Name" },
+      { "op": "replace", "path": "emails[type ne \"work\"].value", "value": "x@y.z" }
+    ]
+  }
+}

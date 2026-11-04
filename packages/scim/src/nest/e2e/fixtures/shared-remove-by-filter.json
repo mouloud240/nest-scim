@@ -1,0 +1,10 @@
+{
+  "description": "Remove a multi-valued record via valueFilter (§3.5.2.2: matching records removed; attr unassigned when empty).",
+  "expects": { "status": 200, "targetPath": "remove emails[type eq work]", "final": "emails unassigned" },
+  "request": {
+    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    "Operations": [
+      { "op": "remove", "path": "emails[type eq \"work\"]" }
+    ]
+  }
+}

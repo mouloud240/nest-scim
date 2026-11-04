@@ -1,0 +1,12 @@
+{
+  "description": "Okta multi-op patch where later ops depend on earlier results (§3.5.2 lines 1918-1922): add displayName, then replace it again, then remove.",
+  "expects": { "status": 200, "targetPath": "Sequential application of 3 ops", "final": "displayName removed" },
+  "request": {
+    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    "Operations": [
+      { "op": "add", "path": "displayName", "value": "Chain One" },
+      { "op": "replace", "path": "displayName", "value": "Chain Two" },
+      { "op": "remove", "path": "displayName" }
+    ]
+  }
+}

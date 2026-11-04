@@ -1,0 +1,10 @@
+{
+  "description": "Okta single-attribute patch: replace displayName (canonical Okta profile push).",
+  "expects": { "status": 200, "targetPath": "Change displayName to 'Babs J. (Okta)'", "final": "displayName" },
+  "request": {
+    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    "Operations": [
+      { "op": "replace", "path": "displayName", "value": "Babs J. (Okta)" }
+    ]
+  }
+}
