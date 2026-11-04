@@ -100,6 +100,9 @@ export type { ScimSPCOverrides } from './core/spc/merge-provider-config';
 export { projectScimResource, splitAttributePath, selectAttributePath } from './core/attributes/attributes';
 export type { ScimAttributeSelection } from './core/attributes/attributes';
 
+/* ── PATCH application — RFC 7644 §3.5.2 via scim-patch (M3) ────────────── */
+export { parsePatchOperations, applyPatchOperations, applyPatchRequest, mapPatchEngineError } from './core/patch/apply';
+
 /* ── Nest module + SPI wiring — RFC 7644 §1–§3 routing layer ───────────── */
 export { ScimModule } from './nest/scim-module';
 export type { ScimModuleOptions, ModuleImport } from './nest/scim-module-options';

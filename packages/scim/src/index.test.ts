@@ -14,6 +14,12 @@ import {
   notImplemented,
   projectScimResource,
   ScimListQueryPipe,
+  // M3 patch surface
+  applyPatchRequest,
+  applyPatchOperations,
+  parsePatchOperations,
+  mapPatchEngineError,
+  PATCH_OP_SCHEMA,
 } from './index';
 import type {
   ScimModuleOptions,
@@ -45,6 +51,20 @@ describe('M2 nest exports are wired', () => {
   it('re-exports the RFC-mandated error factory and projection helper', () => {
     expect(notImplemented().status).toBe(501);
     expect(projectScimResource({ id: 'a', schemas: ['s'] }, {})).toEqual({ id: 'a', schemas: ['s'] });
+  });
+
+  it('exposes the M3 patch application surface', () => {
+    expect(typeof applyPatchRequest).toBe('function');
+    expect(typeof applyPatchOperations).toBe('function');
+    expect(typeof parsePatchOperations).toBe('function');
+    expect(typeof mapPatchEngineError).toBe('function');
+    expect(PATCH_OP_SCHEMA).toBe('urn:ietf:params:scim:api:messages:2.0:PatchOp');
+
+    const patched = applyPatchRequest(
+      { schemas: ['s'], userName: 'a' } as unknown as object,
+      { schemas: [PATCH_OP_SCHEMA], Operations: [{ op: 'Replace', path: 'userName', value: 'b' }] },
+    );
+    expect((patched as { userName?: string }).userName).toBe('b'); // case-normalized end-to-end
   });
 
   it('exposes the SPI option/contract type surface at compile time', () => {
