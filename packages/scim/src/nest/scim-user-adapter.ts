@@ -77,6 +77,15 @@ export interface ParsedListQuery extends ScimAttributeSelection {
   explicitCount: boolean;
 }
 
+/** True when a required userName value is absent or blank (§4.1.1). */
+function userNameMissing(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    (typeof value === 'string' && value.trim().length === 0)
+  );
+}
+
 /** Payload guard: schemas attribute naming the core User (RFC 7644 §3.3). */
 function assertUserPayload(rawPayload: unknown): ScimUserCreate {
   if (rawPayload === null || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
@@ -89,7 +98,7 @@ function assertUserPayload(rawPayload: unknown): ScimUserCreate {
       detail: `Request body must declare "schemas" including ${SCIM_USER_SCHEMA}.`,
     });
   }
-  if (typeof payload.userName !== 'string' || payload.userName.trim().length === 0) {
+  if (userNameMissing(payload.userName)) {
     throw invalidValue({ detail: 'A required value was missing or empty: "userName" (RFC 7643 §4.1.1).' });
   }
   // readOnly attrs (id/meta/groups) ignored per §3.3 — payload passes to the mapper whole.
@@ -117,18 +126,6 @@ function parseCount(value: unknown, maxResults: number): number {
   if (Number.isNaN(parsed)) return maxResults;
   if (parsed < 0) return 0; // §3.4.2.4: negative SHALL be interpreted as 0
   return Math.min(Math.floor(parsed), maxResults);
-}
-
-/**
- * RFC 7644 §3.4 attribute-selection params, validated/normalized.
- * Non-string / comma-string forms are split exactly like wire clients send.
- */
-function parseSelection(raw: Partial<RawListQuery>): ScimAttributeSelection {
-  const selection = {
-    attributes: firstList(raw.attributes),
-    excludedAttributes: firstList(raw.excludedAttributes),
-  };
-  return selection;
 }
 
 function firstList(value: unknown): string[] | undefined {
@@ -159,13 +156,13 @@ export class ScimUserAdapter<U = unknown> {
     await this.assertUserNameFree(payload.userName);
 
     const domain = await this.o.userService.create(this.o.userMapper.fromScim(payload));
-    return this.resourceResult(domain);
+    return this.resourceOf(domain);
   }
 
   /* ── Detail — RFC 7644 §3.4.1 ───────────────────────────────────────── */
 
   async detail(id: string, parsed: ParsedListQuery = EMPTY_PARSED_LIST_QUERY): Promise<AdapterResourceResult> {
-    const { resource, location } = await this.resourceFromId(id);
+    const { resource, location } = this.resourceOf(await this.mustFind(id));
     return {
       location,
       resource: projectScimResource(resource, parsed),
@@ -186,14 +183,14 @@ export class ScimUserAdapter<U = unknown> {
 
     const domain = this.o.userMapper.fromScim(payload, existing);
     const updated = await this.o.userService.update(domain);
-    return this.resourceResult(updated);
+    return this.resourceOf(updated);
   }
 
   /* ── Patch — RFC 7644 §3.5.2 (atomic; success = 200 + resource) ─────── */
 
   /**
    * Order: SPC gate (501) → mustFind (404) → body validation. Commons are
-   * stripped before ops run and rebuilt by resourceResult (readOnly, §3.1)
+   * stripped before ops run and rebuilt by resourceOf (readOnly, §3.1)
    * — the engine applies ops on a clone, so a failing op aborts before the
    * single `update()` write (§3.5.2 atomicity, line 1931).
    *
@@ -213,24 +210,19 @@ export class ScimUserAdapter<U = unknown> {
     }
 
     const existing = await this.mustFind(id);
-    const current = this.resourceOf(existing);
+    const { resource: current } = this.resourceOf(existing);
 
     const { id: _roId, meta: _roMeta, ...patchable } = current;
     const patched = applyPatchRequest(patchable as unknown as Record<string, unknown>, rawBody);
 
     // userName is REQUIRED (§4.1.1) — unassignment fails with mutability.
-    const nextUserName = patched.userName;
-    if (
-      nextUserName === undefined ||
-      nextUserName === null ||
-      (typeof nextUserName === 'string' && nextUserName.trim().length === 0)
-    ) {
+    if (userNameMissing(patched.userName)) {
       throw mutability({ detail: 'The "userName" attribute is required and cannot be unassigned by a patch operation.' });
     }
 
     // userName MOVE onto another row → 409 (Table 8).
-    if (nextUserName !== current.userName) {
-      await this.assertUserNameFree(nextUserName as string, id);
+    if (patched.userName !== current.userName) {
+      await this.assertUserNameFree(patched.userName as string, id);
     }
 
     const domain = this.o.userMapper.fromScim(
@@ -238,12 +230,8 @@ export class ScimUserAdapter<U = unknown> {
       existing,
     );
     const updated = await this.o.userService.update(domain); // the only write
-    const result = this.resourceResult(updated);
-
-    return {
-      location: result.location,
-      resource: projectScimResource(result.resource, parsed), // §3.9 selection
-    };
+    const { location, resource } = this.resourceOf(updated);
+    return { location, resource: projectScimResource(resource, parsed) }; // §3.9 selection
   }
 
   /* ── Delete — RFC 7644 §3.5.3 ───────────────────────────────────────── */
@@ -279,7 +267,9 @@ export class ScimUserAdapter<U = unknown> {
     }
 
     return {
-      ...parseSelection(rawQuery),
+      // Attribute selection split exactly as wire clients send it (§3.4/§3.9).
+      attributes: firstList(rawQuery.attributes),
+      excludedAttributes: firstList(rawQuery.excludedAttributes),
       startIndex: parseStartIndex(rawQuery.startIndex),
       count: parseCount(rawQuery.count, this.o.maxResultsPerPage),
       // Presence flags read the RAW record: a garbage value still counts
@@ -291,8 +281,7 @@ export class ScimUserAdapter<U = unknown> {
 
   async list(parsed: ParsedListQuery): Promise<ScimListResponse<ScimUserResource>> {
     const page = await this.o.userService.list({ startIndex: parsed.startIndex, count: parsed.count });
-    const resources = page.items.map((domain) => this.resourceOf(domain));
-    const projected = resources.map((resource) => projectScimResource(resource, parsed));
+    const projected = page.items.map((domain) => projectScimResource(this.resourceOf(domain).resource, parsed));
 
     // §3.4.2: pagination attrs required when a page was explicitly requested.
     const explicitlyPaged = parsed.explicitCount || parsed.explicitStartIndex;
@@ -323,23 +312,21 @@ export class ScimUserAdapter<U = unknown> {
     }
   }
 
-  private async resourceFromId(id: string): Promise<AdapterResourceResult> {
-    const domain = await this.mustFind(id);
-    return this.resourceResult(domain);
-  }
-
-  /** Domain → complete wire resource (commons attached, password stripped). */
-  private resourceResult(domain: U): AdapterResourceResult {
-    const resource = this.resourceOf(domain);
-    return { resource, location: resource.meta?.location ?? '' };
-  }
-
-  private resourceOf(domain: U): ScimUserResource {
+  /**
+   * Domain → wire resource (commons attached, password stripped) plus its
+   * fully-qualified Location URI (RFC 7643 §7.2 / §3.3). The single point
+   * where a domain object becomes a complete wire representation.
+   */
+  private resourceOf(domain: U): AdapterResourceResult {
     const id = this.o.userMapper.getId(domain);
     // writeOnly password MUST never leave the server (RFC 7643 §7.2) even
     // if a mapper mishandles it.
     const { password: _stripped, ...core } = this.o.userMapper.toScim(domain) as ScimUser & { password?: string };
-    return withResourceCommons({ schemas: [SCIM_USER_SCHEMA], ...core }, { id, meta: this.metaFor(domain, id) });
+    const resource = withResourceCommons(
+      { schemas: [SCIM_USER_SCHEMA], ...core },
+      { id, meta: this.metaFor(domain, id) },
+    );
+    return { resource, location: resource.meta?.location ?? '' };
   }
 
   private metaFor(domain: U, id: string): ScimMeta {
