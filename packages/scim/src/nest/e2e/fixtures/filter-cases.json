@@ -1,0 +1,68 @@
+{
+  "description": "Entra/Okta-shaped filter corpus (M4 T5) — seed users POSTed through the real mapper; replaying RFC 7644 §3.4.2.2 under real HTTP. Names/op casing are case-insensitive (rfc7644.txt lines 936-940).",
+  "seed": [
+    {
+      "userName": "f01-alice@example.com",
+      "displayName": "Alice Cooper",
+      "userType": "EMPLOYEE",
+      "emails": [{ "value": "alice@example.com", "type": "work" }]
+    },
+    {
+      "userName": "f02-bob@okta.demo",
+      "displayName": "Bob the Builder",
+      "userType": "Contractor",
+      "emails": [{ "value": "bob@okta.demo", "type": "work" }]
+    },
+    {
+      "userName": "f03-carol@entra.demo",
+      "userType": "Employee",
+      "emails": [
+        { "value": "carol@outlook.example", "type": "work" },
+        { "value": "c@home.example", "type": "home" }
+      ]
+    },
+    {
+      "userName": "f04-dave@okta.demo",
+      "displayName": "Dave The Explorer",
+      "userType": "EMPLOYEE",
+      "emails": [{ "value": "dave@personal.example", "type": "home" }]
+    }
+  ],
+  "cases": [
+    {
+      "name": "okta-case-insensitive-value-eq",
+      "filter": "userType eq \"employee\"",
+      "expect": { "totalResults": 3, "userNamePrefixes": ["f01", "f03", "f04"] }
+    },
+    {
+      "name": "entra-operator-and-value-casing",
+      "filter": "userName Eq \"F02-BOB@OKTA.DEMO\"",
+      "expect": { "totalResults": 1, "userNamePrefixes": ["f02"] }
+    },
+    {
+      "name": "entra-urn-prefixed-path",
+      "filter": "urn:ietf:params:scim:schemas:core:2.0:User:userType eq \"CONTRACTOR\"",
+      "expect": { "totalResults": 1, "userNamePrefixes": ["f02"] }
+    },
+    {
+      "name": "okta-value-path-any-work-email",
+      "filter": "emails[type eq \"work\" and value co \"@example.com\"]",
+      "expect": { "totalResults": 1, "userNamePrefixes": ["f01"] }
+    },
+    {
+      "name": "entra-not-pr-missing-displayname",
+      "filter": "not displayName pr",
+      "expect": { "totalResults": 1, "userNamePrefixes": ["f03"] }
+    },
+    {
+      "name": "okta-multi-clause-logical",
+      "filter": "userType eq \"EMPLOYEE\" and not emails[type eq \"work\"]",
+      "expect": { "totalResults": 1, "userNamePrefixes": ["f04"] }
+    },
+    {
+      "name": "entra-no-match-still-200-empty",
+      "filter": "userType eq \"VENDOR\"",
+      "expect": { "totalResults": 0, "userNamePrefixes": [] }
+    }
+  ]
+}

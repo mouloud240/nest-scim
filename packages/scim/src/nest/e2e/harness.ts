@@ -20,6 +20,7 @@ interface DemoUser {
   key: string;
   userName: string;
   displayName: string | null;
+  userType: string | null;
   emails: Array<{ value: string; type: string }> | [];
   externalId: string | null;
   created: Date;
@@ -76,6 +77,7 @@ class ExampleUserMapper implements ScimUserMapper<DemoUser> {
     key: existing?.key ?? '',
     userName: scim.userName,
     displayName: scim.displayName ?? null, // strict absence ⇒ cleared
+    userType: scim.userType ?? null,
     emails: ('emails' in scim ? scim.emails : undefined) as DemoUser['emails'] ?? [],
     externalId: scim.externalId ?? null,
     created: existing?.created ?? new Date(),
@@ -85,6 +87,7 @@ class ExampleUserMapper implements ScimUserMapper<DemoUser> {
   toScim = (domain: DemoUser) => ({
     userName: domain.userName,
     displayName: domain.displayName ?? undefined,
+    userType: domain.userType ?? undefined,
     emails: domain.emails.length > 0 ? domain.emails : undefined,
     externalId: domain.externalId ?? undefined,
   });
