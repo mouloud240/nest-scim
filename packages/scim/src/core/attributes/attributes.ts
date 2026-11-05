@@ -19,7 +19,7 @@ export interface ScimAttributeSelection {
 }
 
 /** URN prefixes recognized for core-schema stripping (§3.10). */
-const CORE_URN_PREFIXES = [
+export const CORE_URN_PREFIXES = [
   'urn:ietf:params:scim:schemas:core:2.0:User',
   'urn:ietf:params:scim:schemas:core:2.0',
 ] as const;

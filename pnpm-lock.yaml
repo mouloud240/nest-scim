@@ -29,6 +29,9 @@ importers:
       scim-patch:
         specifier: ^0.9.3
         version: 0.9.3
+      scim2-parse-filter:
+        specifier: ^0.3.0
+        version: 0.3.0
     devDependencies:
       '@nestjs/common':
         specifier: ^11.0.0
