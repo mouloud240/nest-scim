@@ -1,22 +1,14 @@
 /**
  * The resource SPI — the ONLY two contracts an application implements to
- * get a full SCIM 2.0 User endpoint suite.
+ * get a full SCIM 2.0 User endpoint suite. Framework-free by design: the
+ * same classes stay reusable outside Nest; DI wiring happens in
+ * `ScimModule.forRoot()` via the SCIM_USER_SERVICE / SCIM_USER_MAPPER tokens.
  *
- * Framework-free on purpose: `@nestjs/common` never leaks into these
- * interfaces, so the same classes are reusable outside Nest (CLI seeding,
- * queue workers). DI wiring happens in `ScimModule.forRoot()` via the
- * `SCIM_USER_SERVICE` / `SCIM_USER_MAPPER` tokens.
- *
- * Division of responsibility (docs/SCIM_SPEC.md D6–D8):
- * - the SERVICE owns persistence and identity (RFC 7644 §1: the service
- *   provider manages the resource store),
- * - the MAPPER owns attribute translation — it is the only component that
- *   knows both shapes, mapping SCIM ⇄ domain with strict absence
- *   semantics: an attribute ABSENT from a SCIM payload means the
- *   corresponding domain field is CLEARED (RFC 7644 §3.5.1 PUT semantics
- *   — replaced representations are complete),
- * - the LIBRARY owns endpoints, wire validation, error taxonomy,
- *   meta/Location and pagination (RFC 7644 §3).
+ * Division (docs/SCIM_SPEC.md D6–D8): the SERVICE owns persistence and
+ * identity; the MAPPER owns attribute translation with strict-absence
+ * semantics (an attribute absent from a SCIM payload CLEARS the domain
+ * field — RFC 7644 §3.5.1); the library owns endpoints, validation, error
+ * taxonomy, meta/Location and pagination (§3).
  */
 import type { Page } from '../core/types/list';
 import type { ScimUser, ScimUserCreate } from '../core/types/user';
@@ -67,7 +59,11 @@ export interface ScimUserService<U> {
    */
   create(user: U): Promise<U>;
 
-  /** Persists a complete replacement (PUT) or mutated copy (PATCH, M3). */
+  /**
+   * Persists a complete replacement (PUT) or a mutated copy (PATCH).
+   * Assumed all-or-nothing: the adapter treats this as the only write of
+   * the flow — a half-applied failure inside it is the implementation's.
+   */
   update(user: U): Promise<U>;
 
   /** Removes the user; adapter 404s beforehand when `findById` is null. */

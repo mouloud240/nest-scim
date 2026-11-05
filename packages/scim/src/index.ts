@@ -4,9 +4,6 @@
  * The library owns the protocol (endpoints, RFC 7644 PATCH, filtering,
  * pagination, error taxonomy); the application owns only its data through
  * two DI-wired SPI contracts (a user service + a user mapper).
- *
- * M1: protocol core (framework-free). The Nest module, controller and SPI
- * wiring land in M2 — see docs/SCIM_SPEC.md.
  */
 
 /** Current library version, kept in sync with package.json. */

@@ -1,21 +1,11 @@
 /**
  * Resource adapter — the wire⇄SPI bridge the controllers route through.
+ * All behavior cites docs/rfc/rfc7644.txt; decisions live in docs/SCIM_SPEC.md.
  *
- * Behavior verified against docs/rfc/rfc7644.txt (grep, never memory):
- * - §3.3  create: 201 + Location + body (§3.3 lines 601–610); readOnly
- *   attributes ignored; userName conflicts MUST be 409 "uniqueness"
- *   (§3.3 lines 623–627 — e.g. duplicate userName). externalId is NOT
- *   server-enforced for uniqueness (RFC 7643 §3.1 lines 888–892: "the
- *   server does not enforce uniqueness") — stores may enforce their own.
- * - §3.4.2.4  pagination: startIndex default 1, <1 → 1; count default =
- *   service provider max (here: ServiceProviderConfig.filter.maxResults);
- *   negative count → 0; count 0 → only totalResults.
- * - §3.5.1  PUT: MUST NOT create (404 instead); returns 200 + full
- *   resource; required attributes (userName) MUST be present.
- * - §3.9  attributes/excludedAttributes projection, mutual exclusion.
- * - Table 8: 501 semantics live by the SPC claim (patch.supported
- *   override → adapter 501s before any SPI work). Sorting (§3.4.2.3) is
- *   not implemented in M2 → requests carrying sortBy reject with 501.
+ * create §3.3 · detail §3.4.1 · replace §3.5.1 · patch §3.5.2 ·
+ * delete §3.5.3 · list §3.4.2 (+3.4.2.4, §3.9 selection) ·
+ * Table 8: sortBy/sortOrder → 501; SPC `patch.supported:false` → PATCH 501s
+ * before any SPI call.
  */
 import {
   invalidFilter,
@@ -51,21 +41,11 @@ export interface ScimUserAdapterOptions<U> {
   basePath: string;
   /** List clamp — SHOULD mirror ServiceProviderConfig.filter.maxResults. */
   maxResultsPerPage: number;
-  /**
-   * Mirror of ServiceProviderConfig.patch.supported (RFC 7643 §5). When
-   * `false`, every PATCH answers 501 BEFORE any SPI call (Table 8: "the
-   * service provider does not support the request operation"). SPC wire
-   * claims stay honest with behavior — an IdP probing PATCH against an
-   * unsupported provider gets the documented 501, not a 404.
-   */
+  /** SPC mirror (RFC 7643 §5): false → every PATCH answers 501 before any SPI call (Table 8). */
   patchSupported?: boolean;
 }
 
-/**
- * The WIRE query as sent by the HTTP layer — raw, untrusted, deliberately
- * `unknown`-valued. This is NOT the type the controllers consume; the
- * controllers receive {@link ParsedListQuery} via the pipe.
- */
+/** The wire query as sent — raw, untrusted, `unknown`-valued. */
 export interface RawListQuery extends ScimAttributeSelection {
   startIndex?: unknown;
   count?: unknown;
@@ -75,31 +55,25 @@ export interface RawListQuery extends ScimAttributeSelection {
 }
 
 /**
- * The wire query AFTER `parseListQuery` — typed, normalized, RFC-verified
- * (§3.4.2.4 Table 6). This is the single shape `list`/`detail` consume:
- * interpretation happens here exactly once; the serving flows below are
- * pure over parsed input.
+ * The wire query after `parseListQuery` — typed, normalized per §3.4.2.4
+ * Table 6; the single shape `list`/`detail` consume (interpretation lives
+ * in the adapter exactly once). `filter`/`sortBy`/`sortOrder` are always
+ * `undefined` today: non-empty filter → 400 invalidFilter, sorting → 501
+ * (M4 fills `filter` with parse-filter output).
  */
 export interface ParsedListQuery extends ScimAttributeSelection {
   /** Normalized 1-based index, default 1; garbage/negative → 1. */
   startIndex: number;
   /** Normalized size, default = provider maximum; negative → 0. */
   count: number;
-  /**
-   * Non-empty filter raw value — ALWAYS `undefined` in M2, because
-   * `parseListQuery` rejects it with 400 invalidFilter (the M3 filter
-   * pipeline replaces the rejection with actual parsing, filling this).
-   */
+  /** Always `undefined` until M4 (parseFilter fills it). */
   filter?: undefined;
-  /**
-   * ALWAYS `undefined` in M2 — presence of either → 501 notImplemented
-   * (§3.4.2.3 sorting is not supported yet); M3+ may fill these.
-   */
+  /** Always `undefined` until sorting is implemented. */
   sortBy?: undefined;
   sortOrder?: undefined;
-  /** §3.4.2: envelope carries pagination attrs only when requested. */
+  /** Envelope carries pagination attrs only when requested (§3.4.2). */
   explicitStartIndex: boolean;
-  /** §3.4.2: envelope carries pagination attrs only when requested. */
+  /** Envelope carries pagination attrs only when requested (§3.4.2). */
   explicitCount: boolean;
 }
 
@@ -118,8 +92,7 @@ function assertUserPayload(rawPayload: unknown): ScimUserCreate {
   if (typeof payload.userName !== 'string' || payload.userName.trim().length === 0) {
     throw invalidValue({ detail: 'A required value was missing or empty: "userName" (RFC 7643 §4.1.1).' });
   }
-  // readOnly attributes (id/meta/groups) are ignored per §3.3 — nothing to
-  // validate; the mapper receives the whole remaining payload untouched.
+  // readOnly attrs (id/meta/groups) ignored per §3.3 — payload passes to the mapper whole.
   return payload as unknown as ScimUserCreate;
 }
 
@@ -132,8 +105,7 @@ function firstScalar(value: unknown): string | undefined {
 function parseStartIndex(value: unknown): number {
   const raw = firstScalar(value);
   const parsed = raw === undefined ? NaN : Number(raw);
-  // §3.4.2.4 Table 6: defaults to 1; "a value less than 1 SHALL be
-  // interpreted as 1". Non-numeric garbage is treated as unspecified.
+  // §3.4.2.4 Table 6: default 1; values < 1 are also 1; garbage unspecified.
   if (raw === undefined || Number.isNaN(parsed) || parsed < 1) return 1;
   return Math.floor(parsed);
 }
@@ -206,8 +178,7 @@ export class ScimUserAdapter<U = unknown> {
     const existing = await this.mustFind(id);
     const payload = assertUserPayload(rawPayload);
 
-    // PUT conflicts: when the payload MOVES userName onto someone else's
-    // spot, §3.3's duplicate-userName conflict rule applies for PUT too.
+    // PUT-move onto someone else's userName → §3.3's conflict rule too.
     const currentUserName = this.o.userMapper.toScim(existing).userName;
     if (payload.userName !== currentUserName) {
       await this.assertUserNameFree(payload.userName, id);
@@ -221,28 +192,22 @@ export class ScimUserAdapter<U = unknown> {
   /* ── Patch — RFC 7644 §3.5.2 (atomic; success = 200 + resource) ─────── */
 
   /**
-   * §3.5.2 flow verified against docs/rfc/rfc7644.txt:
-   * mustFind → 404 first (Table 8, resource must exist); commons
-   * (id/meta — readOnly, RFC 7643 §3.1) stripped BEFORE ops run; the op
-   * sequence applies on a COPY inside `applyPatchRequest`, so a failing
-   * op *n* aborts before there is anything to write — §3.5.2 atomicity
-   * (line 1931) with `service.update()` as the ONLY write, at the end.
+   * Order: SPC gate (501) → mustFind (404) → body validation. Commons are
+   * stripped before ops run and rebuilt by resourceResult (readOnly, §3.1)
+   * — the engine applies ops on a clone, so a failing op aborts before the
+   * single `update()` write (§3.5.2 atomicity, line 1931).
    *
-   * Mapper round-trip (strict-absence, SCIM_SPEC rules 1–7): the patch
-   * starts from the CURRENT FULL projection, so keys absent after the
-   * sequence mean "the ops unassigned this" — precisely the deletion
-   * signal `fromScim(scim, existing)` needs. Assigning a required
-   * attribute to null/unassigned fails with `mutability` (§3.5.2.2 tail:
-   * required/readOnly cannot be unassigned); a userName MOVE conflicts
-   * with another row → 409 uniqueness (Table 8, same rule as PUT).
+   * Mapper round-trip (strict-absence): patching starts from the CURRENT
+   * FULL projection, so a key absent after the sequence = "unassigned by
+   * the ops" — the deletion signal `fromScim(scim, existing)` consumes.
+   * Unassigning required userName → mutability (§3.5.2.2); moving it onto
+   * another row → 409 uniqueness (Table 8, same rule as PUT).
    */
   async patch(
     id: string,
     rawBody: unknown,
     parsed: ParsedListQuery = EMPTY_PARSED_LIST_QUERY,
   ): Promise<AdapterResourceResult> {
-    // §4: the SPC PATCH claim gates the feature — 501 precedes even the
-    // 404 lookup so unsupported providers answer uniformly (Table 8).
     if (this.o.patchSupported === false) {
       throw notImplemented({ detail: 'PATCH is not supported by this service provider.' });
     }
@@ -253,8 +218,7 @@ export class ScimUserAdapter<U = unknown> {
     const { id: _roId, meta: _roMeta, ...patchable } = current;
     const patched = applyPatchRequest(patchable as unknown as Record<string, unknown>, rawBody);
 
-    // §4.1.1: userName is REQUIRED — a patch that unassigns it (or
-    // empties it) fails with `mutability` per §3.5.2.2's last rule.
+    // userName is REQUIRED (§4.1.1) — unassignment fails with mutability.
     const nextUserName = patched.userName;
     if (
       nextUserName === undefined ||
@@ -264,7 +228,7 @@ export class ScimUserAdapter<U = unknown> {
       throw mutability({ detail: 'The "userName" attribute is required and cannot be unassigned by a patch operation.' });
     }
 
-    // Table 8: a MOVE of userName onto someone else's name → 409.
+    // userName MOVE onto another row → 409 (Table 8).
     if (nextUserName !== current.userName) {
       await this.assertUserNameFree(nextUserName as string, id);
     }
@@ -273,7 +237,7 @@ export class ScimUserAdapter<U = unknown> {
       { schemas: [SCIM_USER_SCHEMA], ...(patched as Record<string, unknown>) } as unknown as ScimUserCreate,
       existing,
     );
-    const updated = await this.o.userService.update(domain); // the ONLY write
+    const updated = await this.o.userService.update(domain); // the only write
     const result = this.resourceResult(updated);
 
     return {
@@ -292,25 +256,19 @@ export class ScimUserAdapter<U = unknown> {
   /* ── List — RFC 7644 §3.4.2 (+3.4.2.4 pagination, 3.9 selection) ────── */
 
   /**
-   * Wire → {@link ParsedListQuery}, the single interpretation point for
-   * list/query-string inputs (parse, don't validate). Everything the
-   * serving flows might get wrong about raw query-string values lives
-   * here: coercion, clamping, §3.4.2.4 defaults, and unsupported-param
-   * rejections (§3.4 filter → 400 invalidFilter, sorting → 501). Throws
-   * ScimError synchronously — the controller pipe surfaces these through
-   * the §3.12 exception filter unchanged.
+   * The single interpretation point for raw query strings (parse, don't
+   * validate): §3.4.2.4 coercion/clamping and the unsupported-param
+   * rejections. Throws ScimError synchronously — the controller pipe
+   * surfaces it through the §3.12 exception filter unchanged.
    */
   parseListQuery(raw: unknown): ParsedListQuery {
     const rawQuery = (raw ?? {}) as Partial<RawListQuery>;
 
-    // Filter → 400 while the M2 gate stands; M3 replaces the throw with
-    // scim2-parse-filter evaluation (message kept stable for the wire).
     if (firstScalar(rawQuery.filter) !== undefined && rawQuery.filter !== '') {
       throw invalidFilter({
         detail: 'Filtering is not yet enabled on this service provider (planned for the next release).',
       });
     }
-    // Sorting → 501, Table 8 ("does not support the request operation").
     if (
       firstScalar(rawQuery.sortBy) !== undefined ||
       firstScalar(rawQuery.sortOrder) !== undefined
@@ -324,9 +282,8 @@ export class ScimUserAdapter<U = unknown> {
       ...parseSelection(rawQuery),
       startIndex: parseStartIndex(rawQuery.startIndex),
       count: parseCount(rawQuery.count, this.o.maxResultsPerPage),
-      // Presence flags read the RAW record (key present ⇒ flagged), so a
-      // garbage value still marks the query as explicitly paginated —
-      // matching §3.4.2's "partial results" envelope semantics.
+      // Presence flags read the RAW record: a garbage value still counts
+      // as explicit pagination (§3.4.2 partial-results envelope).
       explicitStartIndex: 'startIndex' in rawQuery,
       explicitCount: 'count' in rawQuery,
     };
@@ -337,8 +294,7 @@ export class ScimUserAdapter<U = unknown> {
     const resources = page.items.map((domain) => this.resourceOf(domain));
     const projected = resources.map((resource) => projectScimResource(resource, parsed));
 
-    // Pagination attrs REQUIRED whenever a page was explicitly requested
-    // (§3.4.2: partial results) — builders derive the rest.
+    // §3.4.2: pagination attrs required when a page was explicitly requested.
     const explicitlyPaged = parsed.explicitCount || parsed.explicitStartIndex;
     return buildListResponse({
       totalResults: page.totalResults,
@@ -380,8 +336,8 @@ export class ScimUserAdapter<U = unknown> {
 
   private resourceOf(domain: U): ScimUserResource {
     const id = this.o.userMapper.getId(domain);
-    // writeOnly password MUST never leave the server (RFC 7643 §7.2:
-    // "returned" never) even if a mapper mishandles it.
+    // writeOnly password MUST never leave the server (RFC 7643 §7.2) even
+    // if a mapper mishandles it.
     const { password: _stripped, ...core } = this.o.userMapper.toScim(domain) as ScimUser & { password?: string };
     return withResourceCommons({ schemas: [SCIM_USER_SCHEMA], ...core }, { id, meta: this.metaFor(domain, id) });
   }

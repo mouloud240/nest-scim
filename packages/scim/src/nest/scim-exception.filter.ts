@@ -1,14 +1,8 @@
 /**
- * Global SCIM exception mapping — RFC 7644 §3.12
- * (docs/rfc/rfc7644.txt §3.12: implementers MUST return errors in the body
- * in JSON format using the ErrorResponse schema; Table 8 → statuses,
- * Table 9 → detail keywords).
- *
- * Every error leaving the SCIM controllers — including foreign framework
- * errors and bugs — is converted to the §3.12 wire shape here, so IdPs
- * never receive express/fastify HTML error pages under the SCIM base
- * path. Unknown/5xx-level causes are logged server-side but NEVER leak
- * into the response (RFC 7643 §5-sensitive detail discipline).
+ * Global SCIM exception mapping — RFC 7644 §3.12. Every error leaving the
+ * SCIM controllers lands here, so IdPs never receive an express/fastify
+ * HTML error page under the base path. Unknown causes are logged
+ * server-side and NEVER leak into the response body.
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import { isScimError } from '../core/errors/scim-error';
@@ -48,8 +42,7 @@ export class ScimExceptionFilter implements ExceptionFilter {
       return [status, { schemas: [ERROR_SCHEMA_URI], status: String(status), detail: exception.message }];
     }
 
-    // Not a ScimError, not an HttpException: a library-filter-external
-    // bug. Log loudly (cause preserved server-side), respond generically.
+    // Not a ScimError, not an HttpException: log loudly, respond generically.
     this.logger.error(
       exception instanceof Error ? exception.stack ?? exception.message : String(exception),
     );

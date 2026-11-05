@@ -6,17 +6,13 @@
  * export class AppModule {}
  * ```
  *
- * Design choices locked in docs/SCIM_SPEC.md (M2):
- * - Control base path + conditional guards live INSIDE forRoot ⇒ dynamic
- *   controller classes built in this closure (no RouterModule peer dep).
- * - Library writes responses through the adapter-agnostic writer in
- *   `scim-content.ts` (express AND fastify AND raw node surfaces).
- * - `/Users` routes carry the user's `Option.auth` guards ONLY;
- *   discovery endpoints stay unguarded by default (rate limiting and
- *   global locking are bootstrap concerns of the application).
- * - PATCH follows D3/D7/D12 (SCIM_SPEC): adapter-owned §3.5.2 flow, with
- *   a 501 whenever SPC override declares `patch.supported: false`
- *   (Table 8) — route and ServiceProviderConfig never disagree.
+ * Locked decisions (docs/SCIM_SPEC.md): controllers are built INSIDE
+ * `forRoot()` (basePath + guards are runtime values); responses are written
+ * through the adapter-agnostic writer in `scim-content.ts` (express AND
+ * fastify AND raw node surfaces, always the RFC media type); guards bind to
+ * `/Users` routes ONLY — discovery stays unguarded (a bootstrap concern);
+ * PATCH answers 501 whenever the SPC declares `patch.supported: false`
+ * (Table 8) — route and ServiceProviderConfig never disagree.
  */
 import {
   Body,
@@ -145,9 +141,7 @@ function createUsersControllerClass(
       @Query(ScimListQueryPipe) query: ParsedListQuery,
       @Res() res: ControllerResponse,
     ): Promise<void> {
-      // §3.5.2: success = 200 + resulting resource (never 204 — one code
-      // path, and MUST 200 whenever ?attributes was requested). 501 comes
-      // from the adapter when the SPC declares patch unsupported.
+      // §3.5.2: success = 200 + resulting resource (never 204).
       const result = await this.adapter.patch(id, payload, query);
       writeScimJson(res, 200, result.resource);
     }

@@ -1,19 +1,9 @@
 /**
- * Response writing, adapter-agnostic.
- *
- * The library ships ZERO HTTP-platform code (platform decision: express,
- * fastify, and the new `@nestjs/platform-node` must all be first-class).
- * Different adapters expose different response surfaces:
- *
- * - express / platform-fastify / platform-node wrappers: `.status()` +
- *   `.json()` express-compatible surface (fastify adds a compat wrapper;
- *   platform-node wires its own),
- * - raw `http.ServerResponse` (unwrapped platform-node): `writeHead`/`end`.
- *
- * Every SCIM response body is `application/scim+json` — RFC 7644 §3.4.2
- * (docs/rfc/rfc7644.txt: ListResponse "SHOULD" + base-content rules; the
- * IdP interop corpora of Okta/Entra demand the real media type, NOT
- * application/json).
+ * Response writing, adapter-agnostic — the library ships ZERO HTTP-platform
+ * code, so both express-like surfaces (`.status()`/`.json()`) and raw
+ * `http.ServerResponse` (`writeHead`/`end`) are first-class. Every SCIM
+ * response body is `application/scim+json` (RFC 7644 §3.4.2 — IdP interop
+ * requires the real media type, never application/json).
  */
 
 /** Media type for every SCIM success AND error response. */
@@ -34,15 +24,9 @@ interface ScimResponseLike {
 }
 
 /**
- * Serializes a SCIM body to the response regardless of HTTP adapter.
- *
- * - express-like surface: `.setHeader`/`.header` for the media type
- *   (express uses setHeader, fastify's compat wrapper either), then
- *   `.status(n).json(body)`,
- * - raw `http.ServerResponse` (platform-node unwrapped): `writeHead` +
- *   `end(JSON.stringify(body))`,
- * - unknown shape: last-resort `statusCode` assignment + `end` — callers
- *   get a response on every adapter, this pointer is never lost.
+ * Serializes a SCIM body to the response on any supported surface:
+ * express-like (`.status`/`.json`), raw node (`writeHead`/`end`), or a
+ * last-resort `statusCode` + `end` fallback so the pointer is never lost.
  */
 export function writeScimJson(response: unknown, status: number, body?: unknown): void {
   const res = response as ScimResponseLike;
@@ -66,12 +50,9 @@ export function writeScimJson(response: unknown, status: number, body?: unknown)
 }
 
 /**
- * Sets the `Location` response header cross-platform — the same two
- * surfaces as {@link writeScimJson} (express `setHeader`, fastify
- * compat `header`, raw node via writeHead-less `setHeader`).
- *
- * RFC 7644 §3.3: the HTTP response SHOULD include a Location header
- * indicating the resource URI (docs/rfc/rfc7644.txt §3.3).
+ * Sets the `Location` response header cross-platform (RFC 7644 §3.3):
+ * express `setHeader`, fastify compat `header`; raw surfaces without
+ * either silently skip (HTTP allows omitting Location).
  */
 export function setLocationHeader(response: unknown, location: string): void {
   const res = response as ScimResponseLike;

@@ -2,15 +2,11 @@
  * Attribute selection projection — RFC 7644 §3.9 + §3.10
  * (docs/rfc/rfc7644.txt lines 3571–3665):
  * - `attributes` / `excludedAttributes` are MUTUALLY EXCLUSIVE,
- * - the minimum set (attributes whose `returned` is "always", plus the
- *   core `schemas` attribute as shown in the §3.9 example) is ALWAYS
- *   present — `attributes` overrides the default set,
- * - names are case-INSENSITIVE (§3.10: "All facets of the fully encoded
- *   attribute name are case insensitive") and MAY be URN-prefixed or
- *   dotted (URN:attr, attr.sub, arr.sub via dot notation),
- * - value-filter notation (`emails[type eq "work"]`) is NOT supported by
- *   this projection — rejected as `invalidFilter` (Table 9 applicability
- *   covers unsupported attribute/filter combinations).
+ * - the minimum set (`schemas`, `id`, "always"-returned attrs) is ALWAYS
+ *   present; `attributes` overrides the default set,
+ * - names are case-INSENSITIVE (§3.10) and MAY be URN-prefixed or dotted,
+ * - value-filter notation (`emails[type eq "work"]`) is NOT supported →
+ *   rejected as `invalidFilter`.
  */
 import { invalidFilter, invalidValue } from '../errors/factories';
 
@@ -28,12 +24,7 @@ const CORE_URN_PREFIXES = [
   'urn:ietf:params:scim:schemas:core:2.0',
 ] as const;
 
-/**
- * Minimum set ALWAYS present in projected resources — the "always"
- * returned common attribute `id` (RFC 7643 §3.1) plus the envelope
- * `schemas` attribute, exactly as the §3.9 example returns
- * {schemas, id, requested…}.
- */
+/** Always present in projected resources: `schemas` + `id` (§3.9 example). */
 const MINIMUM_ATTRS = ['schemas', 'id'] as const;
 
 function throwIfSelectionAmbiguous(selection: ScimAttributeSelection): void {

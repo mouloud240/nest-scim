@@ -1,13 +1,8 @@
 /**
- * Convenience constructors for every defined SCIM detail error —
- * RFC 7644 §3.12, Table 9 (docs/rfc/rfc7644.txt lines 3819–3909).
- *
- * Keyword set verbatim: invalidFilter, tooMany, uniqueness, mutability,
- * invalidSyntax, invalidPath, noTarget, invalidValue, invalidVers, sensitive.
- * All Table 9 rows apply to HTTP 400 except `uniqueness` (409).
- *
- * Statuses without a Table 9 keyword (404 Not Found, 500 Internal Server
- * Error) produce errors with no `scimType` — the attribute is OPTIONAL.
+ * Convenience constructors for every RFC 7644 §3.12 detail error —
+ * Table 9 (docs/rfc/rfc7644.txt lines 3819–3909), keywords verbatim.
+ * All Table 9 rows apply to HTTP 400 except `uniqueness` (409); statuses
+ * without a keyword (404/500) omit `scimType` — the attribute is OPTIONAL.
  */
 
 import { ScimError, ScimScimType } from './scim-error';
