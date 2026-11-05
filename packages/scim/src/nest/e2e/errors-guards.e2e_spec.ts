@@ -169,9 +169,9 @@ describe('error taxonomy on the wire (RFC 7644 §3.12, Table 8/9)', () => {
     expect('scimType' in error).toBe(false);
   });
 
-  it('400 invalidFilter while GET ?filter= is unimplemented (M2 gate)', async () => {
+  it('400 invalidFilter on the wire for syntactically broken ?filter=', async () => {
     const res = await server()
-      .get('/scim/v2/Users?filter=userName pr')
+      .get('/scim/v2/Users?filter=userName eq')
       .expect(400)
       .expect('Content-Type', /application\/scim\+json/);
 

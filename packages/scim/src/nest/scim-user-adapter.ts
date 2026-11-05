@@ -8,12 +8,12 @@
  * before any SPI call.
  */
 import {
-  invalidFilter,
   invalidSyntax,
   invalidValue,
   mutability,
   notFound,
   notImplemented,
+  tooMany,
   uniqueness,
 } from '../core/errors/factories';
 import { buildListResponse } from '../core/responses/list-response';
@@ -24,6 +24,9 @@ import type { ScimListResponse } from '../core/types/list';
 import { projectScimResource } from '../core/attributes/attributes';
 import type { ScimAttributeSelection } from '../core/attributes/attributes';
 import { applyPatchRequest } from '../core/patch/apply';
+import { parseScimFilter } from '../core/filters/parse';
+import { matches } from '../core/filters/matches';
+import type { ScimFilterExpression } from '../core/filters/parse';
 import type { ScimUserMapper, ScimUserService } from './spi';
 
 /** Adapter-owned result of a single-resource flow. */
@@ -57,17 +60,16 @@ export interface RawListQuery extends ScimAttributeSelection {
 /**
  * The wire query after `parseListQuery` — typed, normalized per §3.4.2.4
  * Table 6; the single shape `list`/`detail` consume (interpretation lives
- * in the adapter exactly once). `filter`/`sortBy`/`sortOrder` are always
- * `undefined` today: non-empty filter → 400 invalidFilter, sorting → 501
- * (M4 fills `filter` with parse-filter output).
+ * in the adapter exactly once). `sortBy`/`sortOrder` are always
+ * `undefined`: sorting → 501 (a later milestone fills them).
  */
 export interface ParsedListQuery extends ScimAttributeSelection {
   /** Normalized 1-based index, default 1; garbage/negative → 1. */
   startIndex: number;
   /** Normalized size, default = provider maximum; negative → 0. */
   count: number;
-  /** Always `undefined` until M4 (parseFilter fills it). */
-  filter?: undefined;
+  /** Parsed §3.4.2.2 filter; `undefined` when absent or empty. */
+  filter?: ScimFilterExpression;
   /** Always `undefined` until sorting is implemented. */
   sortBy?: undefined;
   sortOrder?: undefined;
@@ -251,12 +253,8 @@ export class ScimUserAdapter<U = unknown> {
    */
   parseListQuery(raw: unknown): ParsedListQuery {
     const rawQuery = (raw ?? {}) as Partial<RawListQuery>;
+    const rawFilter = firstScalar(rawQuery.filter);
 
-    if (firstScalar(rawQuery.filter) !== undefined && rawQuery.filter !== '') {
-      throw invalidFilter({
-        detail: 'Filtering is not yet enabled on this service provider (planned for the next release).',
-      });
-    }
     if (
       firstScalar(rawQuery.sortBy) !== undefined ||
       firstScalar(rawQuery.sortOrder) !== undefined
@@ -270,6 +268,7 @@ export class ScimUserAdapter<U = unknown> {
       // Attribute selection split exactly as wire clients send it (§3.4/§3.9).
       attributes: firstList(rawQuery.attributes),
       excludedAttributes: firstList(rawQuery.excludedAttributes),
+      filter: rawFilter === undefined || rawFilter.trim().length === 0 ? undefined : parseScimFilter(rawFilter),
       startIndex: parseStartIndex(rawQuery.startIndex),
       count: parseCount(rawQuery.count, this.o.maxResultsPerPage),
       // Presence flags read the RAW record: a garbage value still counts
@@ -280,7 +279,21 @@ export class ScimUserAdapter<U = unknown> {
   }
 
   async list(parsed: ParsedListQuery): Promise<ScimListResponse<ScimUserResource>> {
-    const page = await this.o.userService.list({ startIndex: parsed.startIndex, count: parsed.count });
+    const filter = parsed.filter;
+    const page = await this.o.userService.list({
+      startIndex: parsed.startIndex,
+      count: parsed.count,
+      filter: filter
+        ? { matches: (user) => matches(this.o.userMapper.toScim(user), filter) }
+        : undefined,
+    });
+
+    // Provider ceiling (`maxResultsPerPage` mirrors SPC filter.maxResults):
+    // filtered sets exceeding it fail whole (§3.4.2.2 tooMany, Table 9).
+    if (filter && page.totalResults > this.o.maxResultsPerPage) {
+      throw tooMany({ detail: 'The specified filter yields too many results to be processed.' });
+    }
+
     const projected = page.items.map((domain) => projectScimResource(this.resourceOf(domain).resource, parsed));
 
     // §3.4.2: pagination attrs required when a page was explicitly requested.

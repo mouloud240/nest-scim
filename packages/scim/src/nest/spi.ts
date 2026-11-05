@@ -17,12 +17,19 @@ import type { ScimUser, ScimUserCreate } from '../core/types/user';
  * Page normalization contract handed to {@link ScimUserService.list}: the
  * adapter applies RFC 7644 §3.4.2.4 defaults BEFORE calling the service,
  * so implementations always receive concrete, clamped values.
+ *
+ * With a `filter` present, implementations apply it in their own
+ * store/idiom (predicate over the domain object) and MUST scope
+ * `totalResults` to the filter — the adapter clamps pages and enforces
+ * the provider ceiling (`tooMany`) on top.
  */
-export interface ScimUserServicePage {
+export interface ScimUserServicePage<U = unknown> {
   /** 1-based index of the first requested row (NOT an offset). */
   startIndex: number;
   /** Requested page size, already clamped (0 means "no rows, total only"). */
   count: number;
+  /** Present only when `?filter=` parsed successfully (§3.4.2.2). */
+  filter?: { matches: (user: U) => boolean };
 }
 
 /**
@@ -71,10 +78,12 @@ export interface ScimUserService<U> {
 
   /**
    * Serves one normalized page (§3.4.2.4): return `items` (≤ count rows,
-   * starting at startIndex) plus `totalResults` — the filter-ignoring
-   * total the ListResponse envelope MUST report (§3.4.2).
+   * starting at startIndex, all matching `filter` when present) plus
+   * `totalResults` — the filter-scoped total the ListResponse envelope
+   * MUST report (§3.4.2), BEFORE the adapter clamps or applies the
+   * provider ceiling.
    */
-  list(page: ScimUserServicePage): Promise<Page<U>>;
+  list(page: ScimUserServicePage<U>): Promise<Page<U>>;
 }
 
 /**

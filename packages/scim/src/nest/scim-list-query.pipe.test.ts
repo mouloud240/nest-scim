@@ -61,7 +61,7 @@ describe('ScimListQueryPipe (delegating typed boundary)', () => {
   });
 
   it('passes parse-time ScimErrors through untouched (§3.12 filter later catches them)', () => {
-    expect(() => pipe.transform({ filter: 'userName pr' })).toThrow(/not yet enabled/);
+    expect(() => pipe.transform({ filter: 'userName eq' })).toThrow(/filter syntax was invalid/);
     expect(() => pipe.transform({ sortBy: 'userName' })).toThrow(/Sorting/);
   });
 });

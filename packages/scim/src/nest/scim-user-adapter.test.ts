@@ -17,7 +17,7 @@ interface Row {
 
 const CREATED_AT = new Date('2026-01-01T00:00:00Z');
 
-function makeMemorySuite(rows: Row[] = []) {
+function makeMemorySuite(rows: Row[] = [], maxResultsPerPage = 200) {
   const store = { rows, created: 0, updated: 0, deleted: 0 };
   const service: ScimUserService<Row> = {
     findById: async (id) => store.rows.find((r) => r.id === id) ?? null,
@@ -35,9 +35,10 @@ function makeMemorySuite(rows: Row[] = []) {
       store.deleted += 1;
       store.rows = store.rows.filter((r) => r.id !== id);
     },
-    list: async ({ startIndex, count }) => {
+    list: async ({ startIndex, count, filter }) => {
+      const rows = filter ? store.rows.filter((r) => filter.matches(r)) : store.rows;
       const offset = startIndex - 1;
-      return { items: store.rows.slice(offset, offset + count), totalResults: store.rows.length } satisfies Page<Row>;
+      return { items: rows.slice(offset, offset + count), totalResults: rows.length } satisfies Page<Row>;
     },
   };
   const mapper: ScimUserMapper<Row> = {
@@ -59,7 +60,7 @@ function makeMemorySuite(rows: Row[] = []) {
     userService: service,
     userMapper: mapper,
     basePath: '/scim/v2',
-    maxResultsPerPage: 200,
+    maxResultsPerPage,
   });
   return { adapter, store, mapper, service };
 }
@@ -254,17 +255,25 @@ describe('parseListQuery (wire → typed, RFC §3.4.2.4 / §3.9)', () => {
     expect(adapter.parseListQuery({ excludedAttributes: 'emails' }).excludedAttributes).toEqual(['emails']);
   });
 
-  it('rejects a present non-empty filter with 400 invalidFilter (M2 gate)', () => {
+  it('parses a present filter into the AST; empty filter means no filter', () => {
+    const { adapter } = makeMemorySuite();
+
+    const parsed = adapter.parseListQuery({ filter: 'userName pr' });
+    expect(parsed.filter).toEqual({ op: 'pr', attrPath: 'userName' });
+    // an EMPTY filter value is treated as no filter requested
+    expect(adapter.parseListQuery({ filter: '' }).filter).toBeUndefined();
+  });
+
+  it('rejects filter syntax errors with 400 invalidFilter at parse time', () => {
     const { adapter } = makeMemorySuite();
 
     try {
-      adapter.parseListQuery({ filter: 'userName pr' });
+      adapter.parseListQuery({ filter: 'userName eq' });
       expect.unreachable();
     } catch (error) {
       expect((error as ScimError).scimType).toBe('invalidFilter');
+      expect((error as ScimError).status).toBe(400);
     }
-    // an EMPTY filter value is treated as no filter requested
-    expect(() => adapter.parseListQuery({ filter: '' })).not.toThrow();
   });
 
   it('rejects sortBy/sortOrder presence with 501 and no scimType', () => {
@@ -359,19 +368,31 @@ describe('list flow (RFC 7644 §3.4.2 + §3.4.2.4)', () => {
     expect('startIndex' in body).toBe(false);
   });
 
-  it('400 invalidFilter while filters are unimplemented (M2 gate) — rejected at PARSE time', () => {
-    const { adapter } = suiteWith();
-    // parseListQuery throws synchronously; the pipe surfaces it through
-    // the §3.12 filter, so the wire shape stays identical (validated by e2e).
+  it('filters rows and scopes totalResults to the filter (§3.4.2.2)', async () => {
+    const { adapter } = suiteWith(row(1), { ...row(2), email: 'w@example.com' }, row(3), row(4));
+    const body = await adapter.list(adapter.parseListQuery({ filter: 'emails[type eq "work" and value co "@example.com"]' }));
+
+    expect(body.totalResults).toBe(1);
+    expect(body.Resources?.map((r) => r.userName)).toEqual(['user2']);
+    // filtered + explicitly paginated? no pagination sent — sparse envelope
+    expect('startIndex' in body).toBe(false);
+  });
+
+  it('400 tooMany when a filtered set exceeds the provider ceiling', async () => {
+    const rows = Array.from({ length: 205 }, (_, i) => row(i + 1));
+    const { adapter } = makeMemorySuite(rows, 200);
     try {
-      adapter.parseListQuery({ filter: 'userName pr' });
+      await adapter.list(adapter.parseListQuery({ filter: 'userName pr' }));
       expect.unreachable();
     } catch (error) {
       expect(error).toBeInstanceOf(ScimError);
       expect((error as ScimError).status).toBe(400);
-      expect((error as ScimError).scimType).toBe('invalidFilter');
-      expect((error as ScimError).detail).toContain('not yet enabled');
+      expect((error as ScimError).scimType).toBe('tooMany');
     }
+    // unfiltered totals above the ceiling are legal (plain pagination)
+    await expect(adapter.list(adapter.parseListQuery({ count: '0' }))).resolves.toMatchObject({
+      totalResults: 205,
+    });
   });
 
   it('501 for sortBy/sortOrder (§3.4.2.3 unimplemented in M2) — rejected at PARSE time', () => {
