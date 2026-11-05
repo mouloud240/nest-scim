@@ -8,6 +8,10 @@
 export const LIST_RESPONSE_SCHEMA =
   'urn:ietf:params:scim:api:messages:2.0:ListResponse' as const;
 
+/** Schema URN of a POST /.search body (RFC 7644 §3.4.3). */
+export const SEARCH_REQUEST_SCHEMA =
+  'urn:ietf:params:scim:api:messages:2.0:SearchRequest' as const;
+
 /**
  * Paginated result envelope (RFC 7644 §3.4.2). `Resources` is the literal
  * attribute name — capital R by spec. `itemsPerPage`/`startIndex` are

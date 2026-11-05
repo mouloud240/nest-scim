@@ -101,6 +101,75 @@ describe('list (RFC 7644 §3.4.2)', () => {
     // No explicit pagination params ⇒ plain envelope (no startIndex/itemsPerPage keys)
     expect('startIndex' in body).toBe(false);
   });
+
+  it('applies ?filter= and reports filter-scoped totals (§3.4.2.2)', async () => {
+    const marker = `filtertarget${++seq}`;
+    await server().post('/scim/v2/Users').send(uniquePayload({ userName: `${marker}@example.com` })).expect(201);
+    await server().post('/scim/v2/Users').send(uniquePayload()).expect(201);
+
+    const res = await server()
+      .get(`/scim/v2/Users?filter=userName sw "${marker}"`)
+      .expect(200)
+      .expect('Content-Type', /application\/scim\+json/);
+
+    const body = scimBody(res) as Record<string, unknown>;
+    expect(body.totalResults).toBe(1);
+    expect((body.Resources as Array<Record<string, unknown>>)[0]?.userName).toBe(`${marker}@example.com`);
+  });
+});
+
+describe('POST .search (RFC 7644 §3.4.3)', () => {
+  it('runs the query from the body: filter + projection + pagination', async () => {
+    const marker = `searchtarget${++seq}`;
+    await server().post('/scim/v2/Users').send(uniquePayload({ userName: `${marker}@example.com` })).expect(201);
+
+    const res = await server()
+      .post('/scim/v2/Users/.search')
+      .send({
+        schemas: ['urn:ietf:params:scim:api:messages:2.0:SearchRequest'],
+        filter: `userName sw "${marker}"`,
+        attributes: ['userName'],
+        startIndex: 1,
+        count: 10,
+      })
+      .expect(200)
+      .expect('Content-Type', /application\/scim\+json/);
+
+    const body = scimBody(res) as Record<string, unknown>;
+    expect(body.schemas).toEqual(['urn:ietf:params:scim:api:messages:2.0:ListResponse']);
+    expect(body.totalResults).toBe(1);
+    const resource = (body.Resources as Array<Record<string, unknown>>)[0];
+    expect(resource?.userName).toBe(`${marker}@example.com`);
+    expect('displayName' in resource).toBe(false); // §3.9 projection honored in body form
+  });
+
+  it('400 invalidSyntax when the body does not declare the SearchRequest schema', async () => {
+    const res = await server()
+      .post('/scim/v2/Users/.search')
+      .send({ filter: 'userName pr' }) // no schemas attribute
+      .expect(400);
+
+    const error = scimBody(res) as Record<string, unknown>;
+    expect(error.scimType).toBe('invalidSyntax');
+  });
+
+  it('400 invalidFilter when the body filter is syntactically broken', async () => {
+    const res = await server()
+      .post('/scim/v2/Users/.search')
+      .send({
+        schemas: ['urn:ietf:params:scim:api:messages:2.0:SearchRequest'],
+        filter: 'userName eq',
+      })
+      .expect(400);
+
+    expect((scimBody(res) as Record<string, unknown>).scimType).toBe('invalidFilter');
+  });
+
+  it('GET /Users/.search still resolves through the :id route (routing integrity)', async () => {
+    await server()
+      .get('/scim/v2/Users/.search')
+      .expect(404); // ":id" = ".search" — no user named that; param route unswallowed
+  });
 });
 
 describe('replace (RFC 7644 §3.5.1 — strict absence semantics)', () => {

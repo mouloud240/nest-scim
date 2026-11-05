@@ -124,6 +124,15 @@ function createUsersControllerClass(
       writeScimJson(res, 201, result.resource);
     }
 
+    @Post('.search')
+    async search(
+      @Body() body: unknown,
+      @Res() res: ControllerResponse,
+    ): Promise<void> {
+      // §3.4.3: query parameters travel in the SearchRequest body instead.
+      writeScimJson(res, 200, await this.adapter.list(this.adapter.parseSearchRequest(body)));
+    }
+
     @Put(':id')
     async replace(
       @Param('id') id: string,

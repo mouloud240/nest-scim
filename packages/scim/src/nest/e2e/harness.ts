@@ -11,7 +11,7 @@ import { INestApplication, CanActivate, Type } from '@nestjs/common';
 import { ScimModule } from '../scim-module';
 import { ScimUserAdapter } from '../scim-user-adapter';
 import { ScimUserMapperToken } from '../scim-user-mapper.decorator';
-import type { ScimUserService, ScimUserMapper } from '../spi';
+import type { ScimUserService, ScimUserMapper, ScimUserServicePage } from '../spi';
 import type { Page } from '../../core/types/list';
 import { SCIM_USER_SCHEMA, ScimUserCreate } from '../../core/types/user';
 import type { ScimSPCOverrides } from '../../core/spc/merge-provider-config';
@@ -62,10 +62,10 @@ class InMemoryUserService implements ScimUserService<DemoUser> {
     this.rows = this.rows.filter((u) => u.key !== id);
   };
 
-  list = async ({ startIndex, count }: { startIndex: number; count: number }): Promise<Page<DemoUser>> => ({
-    totalResults: this.rows.length,
-    items: this.rows.slice(startIndex - 1, startIndex - 1 + count),
-  });
+  list = async ({ startIndex, count, filter }: ScimUserServicePage<DemoUser>): Promise<Page<DemoUser>> => {
+    const rows = filter ? this.rows.filter((u) => filter.matches(u)) : this.rows;
+    return { totalResults: rows.length, items: rows.slice(startIndex - 1, startIndex - 1 + count) };
+  };
 }
 
 @ScimUserMapperToken()

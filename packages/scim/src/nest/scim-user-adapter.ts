@@ -17,6 +17,7 @@ import {
   uniqueness,
 } from '../core/errors/factories';
 import { buildListResponse } from '../core/responses/list-response';
+import { SEARCH_REQUEST_SCHEMA } from '../core/types/list';
 import { locationFor, metaFor, withResourceCommons } from '../core/meta/meta';
 import type { ScimMeta } from '../core/types/common';
 import { SCIM_USER_SCHEMA, ScimUser, ScimUserCreate, ScimUserResource } from '../core/types/user';
@@ -135,6 +136,18 @@ function firstList(value: unknown): string[] | undefined {
   if (raw === undefined) return undefined;
   const items = raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
   return items.length > 0 ? items : undefined;
+}
+
+/** §3.4.3: attribute selection inside a SearchRequest body is a JSON array. */
+function bodySelection(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === 'string')) {
+    const items = value.map((item) => (item as string).trim()).filter((item) => item.length > 0);
+    return items.length > 0 ? items : undefined;
+  }
+  throw invalidSyntax({
+    detail: '"attributes" and "excludedAttributes" must be arrays of strings in a SearchRequest body.',
+  });
 }
 
 /**
@@ -275,6 +288,42 @@ export class ScimUserAdapter<U = unknown> {
       // as explicit pagination (§3.4.2 partial-results envelope).
       explicitStartIndex: 'startIndex' in rawQuery,
       explicitCount: 'count' in rawQuery,
+    };
+  }
+
+  /**
+   * §3.4.3 SearchRequest body → the same normalized query shape `parseListQuery`
+   * emits. Body fields are JSON-typed (attributes arrays, filter string), so
+   * selection validation differs from the query-string path.
+   */
+  parseSearchRequest(rawBody: unknown): ParsedListQuery {
+    if (rawBody === null || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+      throw invalidSyntax({ detail: 'Request body must be a single JSON SearchRequest resource.' });
+    }
+    const body = rawBody as Record<string, unknown>;
+    if (
+      !Array.isArray(body.schemas) ||
+      !body.schemas.includes(SEARCH_REQUEST_SCHEMA)
+    ) {
+      throw invalidSyntax({
+        detail: `Request body must declare "schemas" including ${SEARCH_REQUEST_SCHEMA}.`,
+      });
+    }
+    if (body.sortBy !== undefined || body.sortOrder !== undefined) {
+      throw notImplemented({
+        detail: 'Sorting (sortBy/sortOrder) is not supported by this service provider.',
+      });
+    }
+
+    const rawFilter = typeof body.filter === 'string' ? body.filter : undefined;
+    return {
+      attributes: bodySelection(body.attributes),
+      excludedAttributes: bodySelection(body.excludedAttributes),
+      filter: rawFilter === undefined || rawFilter.trim().length === 0 ? undefined : parseScimFilter(rawFilter),
+      startIndex: parseStartIndex(body.startIndex),
+      count: parseCount(body.count, this.o.maxResultsPerPage),
+      explicitStartIndex: 'startIndex' in body,
+      explicitCount: 'count' in body,
     };
   }
 

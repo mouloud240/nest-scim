@@ -47,8 +47,14 @@ export {
 export type { PatchOpKind, PatchOperation, PatchRequest } from './core/types/patch';
 export {
   LIST_RESPONSE_SCHEMA,
+  SEARCH_REQUEST_SCHEMA,
 } from './core/types/list';
 export type { ScimListResponse, ScimListQuery, Page } from './core/types/list';
+
+/* ── Filters — RFC 7644 §3.4.2.2 ───────────────────────────────────────── */
+export { parseScimFilter } from './core/filters/parse';
+export type { ScimFilterExpression } from './core/filters/parse';
+export { matches } from './core/filters/matches';
 
 /* ── meta / Location — RFC 7643 §3.1 ───────────────────────────────────── */
 export {
