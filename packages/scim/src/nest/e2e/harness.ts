@@ -21,8 +21,8 @@ interface DemoUser {
   key: string;
   userName: string;
   displayName: string | null;
-  userType: string | null;
-  emails: Array<{ value: string; type: string }> | [];
+  role: string | null;
+  emails: Array<{ address: string; kind?: string; display?: string; primary?: boolean }>;
   externalId: string | null;
   created: Date;
   lastModified: Date;
@@ -75,10 +75,10 @@ class ExampleUserMapper implements ScimUserMapper<DemoUser> {
   attributePathMap = {
     userName: 'userName',
     displayName: 'displayName',
-    userType: 'userType',
+    userType: 'role',
     emails: 'emails',
-    'emails.value': 'emails.value',
-    'emails.type': 'emails.type',
+    'emails.value': 'emails.address',
+    'emails.type': 'emails.kind',
     externalId: 'externalId',
   };
 
@@ -88,8 +88,13 @@ class ExampleUserMapper implements ScimUserMapper<DemoUser> {
     key: existing?.key ?? '',
     userName: scim.userName,
     displayName: scim.displayName ?? null, // strict absence ⇒ cleared
-    userType: scim.userType ?? null,
-    emails: ('emails' in scim ? scim.emails : undefined) as DemoUser['emails'] ?? [],
+    role: scim.userType ?? null,
+    emails: (scim.emails ?? []).map(({ value, type, display, primary }) => ({
+      address: value,
+      kind: type,
+      display,
+      primary,
+    })),
     externalId: scim.externalId ?? null,
     created: existing?.created ?? new Date(),
     lastModified: existing?.lastModified ?? new Date(),
@@ -98,8 +103,16 @@ class ExampleUserMapper implements ScimUserMapper<DemoUser> {
   toScim = (domain: DemoUser) => ({
     userName: domain.userName,
     displayName: domain.displayName ?? undefined,
-    userType: domain.userType ?? undefined,
-    emails: domain.emails.length > 0 ? domain.emails : undefined,
+    userType: domain.role ?? undefined,
+    emails:
+      domain.emails.length > 0
+        ? domain.emails.map(({ address, kind, display, primary }) => ({
+            value: address,
+            type: kind,
+            display,
+            primary,
+          }))
+        : undefined,
     externalId: domain.externalId ?? undefined,
   });
 

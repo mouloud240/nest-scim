@@ -95,6 +95,42 @@ describe('filter fixture corpus (entra/okta shapes)', () => {
     expectedUserNames(body, testCase.expect.userNamePrefixes);
   });
 
+  it('unmapped attributes are 400 invalidFilter, never a silent empty page', async () => {
+    const res = await server()
+      .get(`/scim/v2/Users?filter=${encodeURIComponent('nickName eq "x"')}`)
+      .expect(400)
+      .expect('Content-Type', /application\/scim\+json/);
+
+    const error = scimBody(res) as Record<string, unknown>;
+    expect(error.status).toBe('400');
+    expect(error.scimType).toBe('invalidFilter');
+    expect(String(error.detail)).toContain('nickName');
+  });
+
+  it('the same unmapped-attribute rejection surfaces through POST /.search', async () => {
+    const res = await server()
+      .post('/scim/v2/Users/.search')
+      .send({
+        schemas: ['urn:ietf:params:scim:api:messages:2.0:SearchRequest'],
+        filter: 'nickName eq "x"',
+      })
+      .expect(400);
+
+    const error = scimBody(res) as Record<string, unknown>;
+    expect(error.scimType).toBe('invalidFilter');
+    expect(String(error.detail)).toContain('nickName');
+  });
+
+  it('rejects an unsupported attribute/operator combination (complex comparison)', async () => {
+    const res = await server()
+      .get(`/scim/v2/Users?filter=${encodeURIComponent('emails eq "x"')}`)
+      .expect(400);
+
+    const error = scimBody(res) as Record<string, unknown>;
+    expect(error.scimType).toBe('invalidFilter');
+    expect(String(error.detail)).toContain('emails');
+  });
+
   it('pagination over a filtered set reports the filtered total and page keys', async () => {
     const res = await server()
       .get('/scim/v2/Users?filter=userType%20eq%20%22EMPLOYEE%22&startIndex=2&count=1')
