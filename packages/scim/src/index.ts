@@ -54,7 +54,7 @@ export type { ScimListResponse, ScimListQuery, Page } from './core/types/list';
 /* ── Filters — RFC 7644 §3.4.2.2 ───────────────────────────────────────── */
 export { parseScimFilter } from './core/filters/parse';
 export type { ScimFilterExpression } from './core/filters/parse';
-export { matches } from './core/filters/matches';
+export type { DomainFilter, ComparisonOp } from './core/filters/domain-filter';
 
 /* ── meta / Location — RFC 7643 §3.1 ───────────────────────────────────── */
 export {
@@ -120,6 +120,7 @@ export type {
   ScimUserMapper,
   ScimUserServicePage,
   ScimUserMeta,
+  AttributePathMap,
 } from './nest/spi';
 export {
   ScimUserAdapter,

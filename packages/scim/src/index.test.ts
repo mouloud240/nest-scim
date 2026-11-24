@@ -14,6 +14,7 @@ import {
   notImplemented,
   projectScimResource,
   ScimListQueryPipe,
+  parseScimFilter,
   // M3 patch surface
   applyPatchRequest,
   applyPatchOperations,
@@ -21,11 +22,14 @@ import {
   mapPatchEngineError,
   PATCH_OP_SCHEMA,
 } from './index';
+import * as scim from './index';
 import type {
   ScimModuleOptions,
   ScimUserService,
   ScimUserMapper,
   ScimUserMeta,
+  DomainFilter,
+  AttributePathMap,
 } from './index';
 
 describe('toolchain smoke test', () => {
@@ -85,5 +89,17 @@ describe('M2 nest exports are wired', () => {
       userMapper: class {},
     };
     expect(opts.basePath).toBe('/scim');
+  });
+});
+
+describe('M5 filter exports are wired', () => {
+  it('exposes the domain filter contract and attribute path map types', () => {
+    expectTypeOf<DomainFilter>().not.toBeNever();
+    expectTypeOf<AttributePathMap>().toEqualTypeOf<Readonly<Record<string, string>>>();
+  });
+
+  it('keeps the parser exported and drops the in-memory evaluator', () => {
+    expect(typeof parseScimFilter).toBe('function');
+    expect('matches' in scim).toBe(false);
   });
 });

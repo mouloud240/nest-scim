@@ -11,25 +11,29 @@
  * taxonomy, meta/Location and pagination (§3).
  */
 import type { Page } from '../core/types/list';
+import type { DomainFilter } from '../core/filters/domain-filter';
 import type { ScimUser, ScimUserCreate } from '../core/types/user';
+
+/** SCIM attrPath → the application's domain dot-path (case-insensitive keys). */
+export type AttributePathMap = Readonly<Record<string, string>>;
 
 /**
  * Page normalization contract handed to {@link ScimUserService.list}: the
  * adapter applies RFC 7644 §3.4.2.4 defaults BEFORE calling the service,
  * so implementations always receive concrete, clamped values.
  *
- * With a `filter` present, implementations apply it in their own
- * store/idiom (predicate over the domain object) and MUST scope
- * `totalResults` to the filter — the adapter clamps pages and enforces
- * the provider ceiling (`tooMany`) on top.
+ * When `where` is present the implementation MUST translate that tree to
+ * its own store/idiom and scope `totalResults` to it — the library never
+ * evaluates rows. The adapter enforces the provider ceiling (`tooMany`)
+ * on the returned total.
  */
-export interface ScimUserServicePage<U = unknown> {
+export interface ScimUserServicePage<P extends string = string> {
   /** 1-based index of the first requested row (NOT an offset). */
   startIndex: number;
   /** Requested page size, already clamped (0 means "no rows, total only"). */
   count: number;
-  /** Present only when `?filter=` parsed successfully (§3.4.2.2). */
-  filter?: { matches: (user: U) => boolean };
+  /** Compiled §3.4.2.2 filter; present only when the request carried one. */
+  where?: DomainFilter<P>;
 }
 
 /**
@@ -43,7 +47,7 @@ export interface ScimUserServicePage<U = unknown> {
  * them itself, `throw` still maps to `409 uniqueness` if you surface the
  * conflict via `ScimError` BEFORE the adapter round-trips.
  */
-export interface ScimUserService<U> {
+export interface ScimUserService<U, P extends string = string> {
   /** Fetches one user by the provider-assigned `id`; null ⇒ 404 notFound. */
   findById(id: string): Promise<U | null>;
 
@@ -78,12 +82,12 @@ export interface ScimUserService<U> {
 
   /**
    * Serves one normalized page (§3.4.2.4): return `items` (≤ count rows,
-   * starting at startIndex, all matching `filter` when present) plus
+   * starting at startIndex, all matching `where` when present) plus
    * `totalResults` — the filter-scoped total the ListResponse envelope
    * MUST report (§3.4.2), BEFORE the adapter clamps or applies the
    * provider ceiling.
    */
-  list(page: ScimUserServicePage<U>): Promise<Page<U>>;
+  list(page: ScimUserServicePage<P>): Promise<Page<U>>;
 }
 
 /**
@@ -114,6 +118,14 @@ export interface ScimUserMeta {
  * `password` MUST never appear in it.
  */
 export interface ScimUserMapper<U> {
+  /**
+   * REQUIRED — SCIM attrPath (core-relative, case-insensitive) → the domain
+   * dot-path holding that value. Filtering only: `toScim` remains the full
+   * translation contract, and this map MUST mirror its read paths. An empty
+   * map declares "this provider supports no filters" (filters → 400).
+   */
+  attributePathMap: AttributePathMap;
+
   /** Extracts the provider-assigned id from a domain object. */
   getId(domain: U): string;
 

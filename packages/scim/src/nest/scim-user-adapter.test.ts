@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ScimError } from '../core/errors/scim-error';
+import type { ComparisonOp, DomainFilter } from '../core/filters/domain-filter';
 import { Page } from '../core/types/list';
 import { PATCH_OP_SCHEMA, PatchRequest } from '../core/types/patch';
 import { SCIM_USER_SCHEMA, ScimUserCreate } from '../core/types/user';
@@ -16,6 +17,72 @@ interface Row {
 }
 
 const CREATED_AT = new Date('2026-01-01T00:00:00Z');
+
+/** Minimal store-side interpreter (the mapping target of the domain tree). */
+function valueAt(row: object, path: string): unknown {
+  let value: unknown = row;
+  for (const segment of path.split('.')) {
+    if (value === null || value === undefined) return undefined;
+    value = (value as Record<string, unknown>)[segment];
+  }
+  return value;
+}
+
+function isPresent(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function compare(actual: unknown, op: ComparisonOp, expected: unknown, ignoreCase: boolean): boolean {
+  if (actual === null || actual === undefined) return false;
+  const fold = (v: unknown): unknown => (ignoreCase && typeof v === 'string' ? v.toLowerCase() : v);
+  const left = fold(actual);
+  const right = fold(expected);
+  switch (op) {
+    case 'eq':
+      return left === right;
+    case 'co':
+      return typeof left === 'string' && typeof right === 'string' && left.includes(right);
+    case 'sw':
+      return typeof left === 'string' && typeof right === 'string' && left.startsWith(right);
+    case 'ew':
+      return typeof left === 'string' && typeof right === 'string' && left.endsWith(right);
+    case 'gt':
+      return (typeof left === 'number' && typeof right === 'number' && left > right) ||
+        (typeof left === 'string' && typeof right === 'string' && left > right);
+    case 'lt':
+      return (typeof left === 'number' && typeof right === 'number' && left < right) ||
+        (typeof left === 'string' && typeof right === 'string' && left < right);
+    case 'ge':
+      return left === right || (typeof left === 'number' && typeof right === 'number' && left > right) ||
+        (typeof left === 'string' && typeof right === 'string' && left > right);
+    case 'le':
+      return left === right || (typeof left === 'number' && typeof right === 'number' && left < right) ||
+        (typeof left === 'string' && typeof right === 'string' && left < right);
+  }
+}
+
+function testWhere(row: object, where: DomainFilter): boolean {
+  switch (where.op) {
+    case 'and':
+      return where.filters.every((child) => testWhere(row, child));
+    case 'or':
+      return where.filters.some((child) => testWhere(row, child));
+    case 'not':
+      return !testWhere(row, where.filter);
+    case 'pr':
+      return isPresent(valueAt(row, where.path));
+    case '[]': {
+      const values = valueAt(row, where.path);
+      return Array.isArray(values) && values.some((element) => testWhere(element, where.itemFilter));
+    }
+    default:
+      return compare(valueAt(row, where.path), where.op, where.value, where.ignoreCase);
+  }
+}
 
 function makeMemorySuite(rows: Row[] = [], maxResultsPerPage = 200) {
   const store = { rows, created: 0, updated: 0, deleted: 0 };
@@ -35,13 +102,17 @@ function makeMemorySuite(rows: Row[] = [], maxResultsPerPage = 200) {
       store.deleted += 1;
       store.rows = store.rows.filter((r) => r.id !== id);
     },
-    list: async ({ startIndex, count, filter }) => {
-      const rows = filter ? store.rows.filter((r) => filter.matches(r)) : store.rows;
+    list: async ({ startIndex, count, where }) => {
+      const rows = where ? store.rows.filter((r) => testWhere(r, where)) : store.rows;
       const offset = startIndex - 1;
       return { items: rows.slice(offset, offset + count), totalResults: rows.length } satisfies Page<Row>;
     },
   };
   const mapper: ScimUserMapper<Row> = {
+    attributePathMap: {
+      userName: 'userName',
+      'emails.value': 'email',
+    },
     getId: (r) => r.id,
     fromScim: (scim, existing) => ({
       id: existing?.id ?? `new-${store.created + 1}`,
@@ -255,13 +326,21 @@ describe('parseListQuery (wire → typed, RFC §3.4.2.4 / §3.9)', () => {
     expect(adapter.parseListQuery({ excludedAttributes: 'emails' }).excludedAttributes).toEqual(['emails']);
   });
 
-  it('parses a present filter into the AST; empty filter means no filter', () => {
+  it('compiles a present filter to the domain tree; empty filter means no filter', () => {
     const { adapter } = makeMemorySuite();
 
     const parsed = adapter.parseListQuery({ filter: 'userName pr' });
-    expect(parsed.filter).toEqual({ op: 'pr', attrPath: 'userName' });
+    expect(parsed.where).toEqual({ op: 'pr', path: 'userName' });
     // an EMPTY filter value is treated as no filter requested
-    expect(adapter.parseListQuery({ filter: '' }).filter).toBeUndefined();
+    expect(adapter.parseListQuery({ filter: '' }).where).toBeUndefined();
+  });
+
+  it('rejects unmapped filter attributes with 400 invalidFilter at parse time', () => {
+    const { adapter } = makeMemorySuite();
+
+    expect(() => adapter.parseListQuery({ filter: 'nickName eq "x"' })).toThrow(
+      /not supported by this service provider/,
+    );
   });
 
   it('rejects filter syntax errors with 400 invalidFilter at parse time', () => {
@@ -370,7 +449,7 @@ describe('list flow (RFC 7644 §3.4.2 + §3.4.2.4)', () => {
 
   it('filters rows and scopes totalResults to the filter (§3.4.2.2)', async () => {
     const { adapter } = suiteWith(row(1), { ...row(2), email: 'w@example.com' }, row(3), row(4));
-    const body = await adapter.list(adapter.parseListQuery({ filter: 'emails[type eq "work" and value co "@example.com"]' }));
+    const body = await adapter.list(adapter.parseListQuery({ filter: 'emails.value co "@example.com"' }));
 
     expect(body.totalResults).toBe(1);
     expect(body.Resources?.map((r) => r.userName)).toEqual(['user2']);

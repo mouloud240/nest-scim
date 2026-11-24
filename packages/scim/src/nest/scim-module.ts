@@ -49,14 +49,7 @@ import {
 import { ScimListQueryPipe } from './scim-list-query.pipe';
 import { SCIM_USER_MAPPER, SCIM_USER_SERVICE } from './tokens';
 import type { ScimModuleOptions } from './scim-module-options';
-
-/** Error emitted when forRoot receives a broken options shape. */
-class ScimModuleConfigError extends Error {
-  constructor(public readonly field: string, what: string) {
-    super(`ScimModule.forRoot: ${field} must be ${what}.`);
-    this.name = 'ScimModuleConfigError';
-  }
-}
+import { ScimModuleConfigError } from './scim-config-error';
 
 /** Concatenates base path + resource suffix without doubled slashes. */
 function joinResourcePath(basePath: string, suffix: string): string {

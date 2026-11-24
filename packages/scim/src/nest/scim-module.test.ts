@@ -6,7 +6,9 @@ import { SCIM_USER_MAPPER, SCIM_USER_SERVICE } from './tokens';
 
 /** Minimal SPI classes for module wiring tests. */
 class UserService {}
-class UserMapper {}
+class UserMapper {
+  attributePathMap = {};
+}
 
 const baseOptions: ScimModuleOptions = {
   basePath: '/scim//v2/',

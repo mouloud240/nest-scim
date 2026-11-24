@@ -13,6 +13,7 @@ import { ScimUserAdapter } from '../scim-user-adapter';
 import { ScimUserMapperToken } from '../scim-user-mapper.decorator';
 import type { ScimUserService, ScimUserMapper, ScimUserServicePage } from '../spi';
 import type { Page } from '../../core/types/list';
+import { testDomainFilter } from './domain-filter-interpreter';
 import { SCIM_USER_SCHEMA, ScimUserCreate } from '../../core/types/user';
 import type { ScimSPCOverrides } from '../../core/spc/merge-provider-config';
 
@@ -63,14 +64,24 @@ class InMemoryUserService implements ScimUserService<DemoUser> {
     this.rows = this.rows.filter((u) => u.key !== id);
   };
 
-  list = async ({ startIndex, count, filter }: ScimUserServicePage<DemoUser>): Promise<Page<DemoUser>> => {
-    const rows = filter ? this.rows.filter((u) => filter.matches(u)) : this.rows;
+  list = async ({ startIndex, count, where }: ScimUserServicePage): Promise<Page<DemoUser>> => {
+    const rows = where ? this.rows.filter((u) => testDomainFilter(u, where)) : this.rows;
     return { totalResults: rows.length, items: rows.slice(startIndex - 1, startIndex - 1 + count) };
   };
 }
 
 @ScimUserMapperToken()
 class ExampleUserMapper implements ScimUserMapper<DemoUser> {
+  attributePathMap = {
+    userName: 'userName',
+    displayName: 'displayName',
+    userType: 'userType',
+    emails: 'emails',
+    'emails.value': 'emails.value',
+    'emails.type': 'emails.type',
+    externalId: 'externalId',
+  };
+
   getId = (domain: DemoUser): string => domain.key;
 
   fromScim = (scim: ScimUserCreate & { password?: string }, existing?: DemoUser): DemoUser => ({

@@ -24,6 +24,7 @@ const unusedService: ScimUserService<never> = {
 const adapter = new ScimUserAdapter({
   userService: unusedService,
   userMapper: {
+    attributePathMap: {},
     getId: () => '',
     fromScim: (scim) => scim as never,
     toScim: () => ({ userName: '' }),
@@ -43,7 +44,7 @@ describe('ScimListQueryPipe (delegating typed boundary)', () => {
       count: 2,
       attributes: ['userName'],
       excludedAttributes: undefined,
-      filter: undefined,
+      where: undefined,
       sortBy: undefined,
       sortOrder: undefined,
       explicitStartIndex: true,

@@ -26,9 +26,10 @@ import { projectScimResource } from '../core/attributes/attributes';
 import type { ScimAttributeSelection } from '../core/attributes/attributes';
 import { applyPatchRequest } from '../core/patch/apply';
 import { parseScimFilter } from '../core/filters/parse';
-import { matches } from '../core/filters/matches';
-import type { ScimFilterExpression } from '../core/filters/parse';
+import { compileFilter } from '../core/filters/compile';
+import type { DomainFilter } from '../core/filters/domain-filter';
 import type { ScimUserMapper, ScimUserService } from './spi';
+import { assertAttributePathMap } from './attribute-path-map';
 
 /** Adapter-owned result of a single-resource flow. */
 export interface AdapterResourceResult {
@@ -69,8 +70,8 @@ export interface ParsedListQuery extends ScimAttributeSelection {
   startIndex: number;
   /** Normalized size, default = provider maximum; negative → 0. */
   count: number;
-  /** Parsed §3.4.2.2 filter; `undefined` when absent or empty. */
-  filter?: ScimFilterExpression;
+  /** Compiled §3.4.2.2 filter; `undefined` when absent or empty. */
+  where?: DomainFilter;
   /** Always `undefined` until sorting is implemented. */
   sortBy?: undefined;
   sortOrder?: undefined;
@@ -162,7 +163,10 @@ export const EMPTY_PARSED_LIST_QUERY: ParsedListQuery = {
 };
 
 export class ScimUserAdapter<U = unknown> {
-  constructor(private readonly o: ScimUserAdapterOptions<U>) {}
+  constructor(private readonly o: ScimUserAdapterOptions<U>) {
+    // Bootstrap-loud: a malformed map must fail during app init, not per request.
+    assertAttributePathMap(this.o.userMapper.attributePathMap);
+  }
 
   /* ── Create — RFC 7644 §3.3 ─────────────────────────────────────────── */
 
@@ -281,7 +285,7 @@ export class ScimUserAdapter<U = unknown> {
       // Attribute selection split exactly as wire clients send it (§3.4/§3.9).
       attributes: firstList(rawQuery.attributes),
       excludedAttributes: firstList(rawQuery.excludedAttributes),
-      filter: rawFilter === undefined || rawFilter.trim().length === 0 ? undefined : parseScimFilter(rawFilter),
+      where: this.compileWhere(rawFilter),
       startIndex: parseStartIndex(rawQuery.startIndex),
       count: parseCount(rawQuery.count, this.o.maxResultsPerPage),
       // Presence flags read the RAW record: a garbage value still counts
@@ -319,7 +323,7 @@ export class ScimUserAdapter<U = unknown> {
     return {
       attributes: bodySelection(body.attributes),
       excludedAttributes: bodySelection(body.excludedAttributes),
-      filter: rawFilter === undefined || rawFilter.trim().length === 0 ? undefined : parseScimFilter(rawFilter),
+      where: this.compileWhere(rawFilter),
       startIndex: parseStartIndex(body.startIndex),
       count: parseCount(body.count, this.o.maxResultsPerPage),
       explicitStartIndex: 'startIndex' in body,
@@ -328,18 +332,16 @@ export class ScimUserAdapter<U = unknown> {
   }
 
   async list(parsed: ParsedListQuery): Promise<ScimListResponse<ScimUserResource>> {
-    const filter = parsed.filter;
+    const where = parsed.where;
     const page = await this.o.userService.list({
       startIndex: parsed.startIndex,
       count: parsed.count,
-      filter: filter
-        ? { matches: (user) => matches(this.o.userMapper.toScim(user), filter) }
-        : undefined,
+      where,
     });
 
     // Provider ceiling (`maxResultsPerPage` mirrors SPC filter.maxResults):
     // filtered sets exceeding it fail whole (§3.4.2.2 tooMany, Table 9).
-    if (filter && page.totalResults > this.o.maxResultsPerPage) {
+    if (where && page.totalResults > this.o.maxResultsPerPage) {
       throw tooMany({ detail: 'The specified filter yields too many results to be processed.' });
     }
 
@@ -356,6 +358,12 @@ export class ScimUserAdapter<U = unknown> {
   }
 
   /* ── Internals ──────────────────────────────────────────────────────── */
+
+  /** Parses + compiles a wire filter; 400s are parse-time (Table 8/9). */
+  private compileWhere(raw: string | undefined): DomainFilter | undefined {
+    if (raw === undefined || raw.trim().length === 0) return undefined;
+    return compileFilter(parseScimFilter(raw), this.o.userMapper.attributePathMap);
+  }
 
   private async mustFind(id: string): Promise<U> {
     const found = await this.o.userService.findById(id);

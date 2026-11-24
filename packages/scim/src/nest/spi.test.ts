@@ -12,6 +12,10 @@ interface DomainUser {
 
 /** Minimal conforming battery — proves the SPI contracts ARE implementable. */
 const userMapper: ScimUserMapper<DomainUser> = {
+  attributePathMap: {
+    userName: 'name',
+    'emails.value': 'email',
+  },
   getId: (d) => d.key,
   fromScim: (scim, existing) => ({
     key: existing?.key ?? crypto.randomUUID(),
@@ -51,5 +55,14 @@ describe('SPI contract types', () => {
     const result = userService.list({ startIndex: 1, count: 20 });
     expectTypeOf(result).toEqualTypeOf<Promise<Page<DomainUser>>>();
     expectTypeOf<NonNullable<Parameters<ScimUserService<DomainUser>['findById']>[0]>>().toBeString();
+  });
+
+  it('receives a typed domain filter through where', () => {
+    const page: ScimUserServicePage<'name' | 'email'> = {
+      startIndex: 1,
+      count: 20,
+      where: { op: 'eq', path: 'name', value: 'bjensen', ignoreCase: true },
+    };
+    expect(page.where?.op).toBe('eq');
   });
 });
