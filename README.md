@@ -24,6 +24,100 @@ You own **only your data**, through two small dependency-injection contracts:
 
 No protocol plumbing in user code — storage + mapping is all you write.
 
+## Filtering against your own store
+
+`?filter=` is parsed and compiled by the library, then handed to your service as
+a typed `DomainFilter` tree. Every attrPath is translated through your mapper's
+`attributePathMap`, so the tree contains only **your** field paths — no SCIM
+names, no SQL, and no in-memory evaluation in the library.
+
+```ts
+@ScimUserMapperToken()
+class UserMapper implements ScimUserMapper<User> {
+  // Required. Unmapped attrs reject the filter as 400 invalidFilter.
+  attributePathMap = {
+    userName: 'login',
+    displayName: 'profile.name',
+    userType: 'role',
+    emails: 'emails',
+    'emails.value': 'emails.address',
+    'emails.type': 'emails.kind',
+  };
+
+  getId = (user: User) => user.id;
+  toScim = (user: User) => /* … */;
+  fromScim = (scim: ScimUserCreate) => /* … */;
+}
+```
+
+`userService.list({ startIndex, count, where })` receives the tree:
+
+```ts
+// where?: DomainFilter — one of:
+// { op: 'eq'|'co'|'sw'|'ew'|'gt'|'lt'|'ge'|'le', path, value, ignoreCase }
+// { op: 'pr', path }
+// { op: '[]', path, itemFilter }          // one element must match itemFilter
+// { op: 'and'|'or', filters }
+// { op: 'not', filter }
+```
+
+Translate it in your store. Prisma-shaped sketch (illustrative — not shipped):
+
+```ts
+function toPrisma(where: DomainFilter): Prisma.UserWhereInput {
+  switch (where.op) {
+    case 'and':
+      return { AND: where.filters.map(toPrisma) };
+    case 'or':
+      return { OR: where.filters.map(toPrisma) };
+    case 'not':
+      return { NOT: toPrisma(where.filter) };
+    case 'pr':
+      return { [where.path]: { not: null } }; // refine per column
+    case '[]':
+      return { [where.path]: { some: toPrisma(where.itemFilter) } };
+    case 'eq':
+      return {
+        [where.path]: where.ignoreCase
+          ? { equals: where.value, mode: 'insensitive' }
+          : { equals: where.value },
+      };
+    // …co/sw/ew/gt/lt/ge/le
+  }
+}
+```
+
+### Semantics your translation must preserve
+
+| Node | Meaning |
+|---|---|
+| comparison | false when the attribute is unassigned; `ignoreCase` folds strings only |
+| `pr` | value is non-empty/non-null; an empty string/array/object is absent |
+| `[]` | at least one element satisfies the whole `itemFilter` (same element) |
+| `not` | logical negation, including absent-attribute cases |
+| `and` / `or` | boolean composition |
+
+`ne` never reaches you: compile desugars it to `pr AND NOT eq`, so a naive
+`NOT (col = ?)` cannot silently drop NULL rows.
+
+### Traps to handle in your dialect
+
+- SQL `NOT` and NULL: in SCIM, `not eq` is true for an absent value. Translate
+  with an explicit `IS NULL OR …` branch, or make columns non-null.
+- `not emails[…]` means "no element matches" (`none` in Prisma), which is not
+  the same as dropping rows whose array is empty.
+- Value-path item paths are relative to one element (`kind`, not
+  `emails.kind`).
+- `totalResults` MUST be scoped to `where`; the adapter clamps pages and
+  rejects filtered sets above `ServiceProviderConfig.filter.maxResults`
+  (400 `tooMany`).
+- An attrPath absent from `attributePathMap` rejects the whole request as 400
+  `invalidFilter` — there is no fallback evaluator. An empty map is legal and
+  means "this provider supports no filtering".
+
+The map is validated at bootstrap: malformed keys/values fail app init, not
+the first request.
+
 ## Monorepo layout
 
 ```
