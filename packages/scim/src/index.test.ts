@@ -34,7 +34,7 @@ import type {
 
 describe('toolchain smoke test', () => {
   it('loads the library entry point and exposes VERSION', () => {
-    expect(VERSION).toBe('0.0.0-alpha.0');
+    expect(VERSION).toBe('1.0.0');
   });
 });
 
@@ -54,7 +54,10 @@ describe('M2 nest exports are wired', () => {
 
   it('re-exports the RFC-mandated error factory and projection helper', () => {
     expect(notImplemented().status).toBe(501);
-    expect(projectScimResource({ id: 'a', schemas: ['s'] }, {})).toEqual({ id: 'a', schemas: ['s'] });
+    expect(projectScimResource({ id: 'a', schemas: ['s'] }, {})).toEqual({
+      id: 'a',
+      schemas: ['s'],
+    });
   });
 
   it('exposes the M3 patch application surface', () => {
@@ -64,10 +67,10 @@ describe('M2 nest exports are wired', () => {
     expect(typeof mapPatchEngineError).toBe('function');
     expect(PATCH_OP_SCHEMA).toBe('urn:ietf:params:scim:api:messages:2.0:PatchOp');
 
-    const patched = applyPatchRequest(
-      { schemas: ['s'], userName: 'a' } as unknown as object,
-      { schemas: [PATCH_OP_SCHEMA], Operations: [{ op: 'Replace', path: 'userName', value: 'b' }] },
-    );
+    const patched = applyPatchRequest({ schemas: ['s'], userName: 'a' } as unknown as object, {
+      schemas: [PATCH_OP_SCHEMA],
+      Operations: [{ op: 'Replace', path: 'userName', value: 'b' }],
+    });
     expect((patched as { userName?: string }).userName).toBe('b'); // case-normalized end-to-end
   });
 
@@ -76,9 +79,7 @@ describe('M2 nest exports are wired', () => {
     expectTypeOf<ScimUserService<never>>(
       {} as unknown as ScimUserService<never>,
     ).not.toBeUndefined();
-    expectTypeOf<ScimUserMapper<never>>(
-      {} as unknown as ScimUserMapper<never>,
-    ).not.toBeUndefined();
+    expectTypeOf<ScimUserMapper<never>>({} as unknown as ScimUserMapper<never>).not.toBeUndefined();
 
     const meta: ScimUserMeta = { version: 'W/"1"' };
     expect(meta.version).toBe('W/"1"');

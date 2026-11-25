@@ -2,7 +2,7 @@
 
 > SCIM 2.0 (RFC 7643/7644) User provisioning server library for NestJS.
 
-[Documentation and quickstart](https://mouloud240.github.io/nest-scim/) · [npm package](https://www.npmjs.com/package/@nest-scim/core) · [GitHub](https://github.com/mouloud240/nest-scim)
+[Documentation and quickstart](https://nest-scim.mouloud.foo/) · [npm package](https://www.npmjs.com/package/@nest-scim/core) · [GitHub](https://github.com/mouloud240/nest-scim)
 
 ```sh
 npm install @nest-scim/core
@@ -95,13 +95,13 @@ function toPrisma(where: DomainFilter): Prisma.UserWhereInput {
 
 ### Semantics your translation must preserve
 
-| Node | Meaning |
-|---|---|
-| comparison | false when the attribute is unassigned; `ignoreCase` folds strings only |
-| `pr` | value is non-empty/non-null; an empty string/array/object is absent |
-| `[]` | at least one element satisfies the whole `itemFilter` (same element) |
-| `not` | logical negation, including absent-attribute cases |
-| `and` / `or` | boolean composition |
+| Node         | Meaning                                                                 |
+| ------------ | ----------------------------------------------------------------------- |
+| comparison   | false when the attribute is unassigned; `ignoreCase` folds strings only |
+| `pr`         | value is non-empty/non-null; an empty string/array/object is absent     |
+| `[]`         | at least one element satisfies the whole `itemFilter` (same element)    |
+| `not`        | logical negation, including absent-attribute cases                      |
+| `and` / `or` | boolean composition                                                     |
 
 `ne` never reaches you: compile desugars it to `pr AND NOT eq`, so a naive
 `NOT (col = ?)` cannot silently drop NULL rows.
@@ -147,12 +147,12 @@ pnpm changeset   # record a change for the next release
 
 ## Release
 
-Add a Changesets entry for each package change. Merging to `master` creates or updates the version pull request. Merging that release PR publishes through GitHub Actions once the package has a license and exists on npm.
+The package is prepared for its first stable release as `1.0.0`. Future package changes should include a Changesets entry. Merging to `master` creates or updates the version pull request; merging that PR verifies, packs, publishes, and creates a GitHub Release.
 
-The current `0.0.0-alpha.0` version and pending Changesets calculate a placeholder `0.0.0` release. The workflow blocks that version: set the first version and changelog to the intended launch version (planned `1.0.0`) in the initial version PR. After the package is licensed and that release PR is merged, publish the first version manually; npm requires an existing package before it can have a trusted publisher. Then configure npm Trusted Publishing for `mouloud240/nest-scim`, workflow `release.yml`, environment `npm`. Later releases use OIDC; no long-lived npm token is stored in GitHub.
+The npm package is scoped as `@nest-scim/core` under the `@nest-scim` organization. The first release is published manually to bootstrap the package; after that, configure npm Trusted Publishing for GitHub owner `mouloud240`, repository `nest-scim`, workflow `release.yml`, and environment `npm`. Later releases use OIDC, so no long-lived npm token is stored in GitHub.
 
 Enable **Allow GitHub Actions to create and approve pull requests** in the repository's Actions settings so Changesets can open its version PR.
 
 ## License
 
-UNLICENSED — not yet published to npm.
+MIT. See [LICENSE](LICENSE).

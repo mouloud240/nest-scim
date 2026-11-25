@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitepress';
 
-const base = process.env.DOCS_BASE ?? '/nest-scim/';
+const base = process.env.DOCS_BASE ?? '/';
 const websiteRoot = fileURLToPath(new URL('../', import.meta.url));
 
 export default defineConfig({

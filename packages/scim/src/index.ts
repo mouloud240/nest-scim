@@ -7,14 +7,10 @@
  */
 
 /** Current library version, kept in sync with package.json. */
-export const VERSION = '0.0.0-alpha.0' as const;
+export const VERSION = '1.0.0' as const;
 
 /* ── Errors — RFC 7644 §3.12 ───────────────────────────────────────────── */
-export {
-  SCIM_ERROR,
-  ScimError,
-  isScimError,
-} from './core/errors/scim-error';
+export { SCIM_ERROR, ScimError, isScimError } from './core/errors/scim-error';
 export type { ScimErrorOptions, ScimScimType } from './core/errors/scim-error';
 export {
   invalidFilter,
@@ -37,18 +33,29 @@ export type { ScimErrorResponse } from './core/errors/body';
 
 /* ── Core resource types — RFC 7643 §3.1/§4.1, RFC 7644 §3.4.2/§3.5.1 ──── */
 export type { ScimMeta } from './core/types/common';
-export {
-  SCIM_USER_SCHEMA,
+export { SCIM_USER_SCHEMA } from './core/types/user';
+export type {
+  ScimEmailType,
+  ScimEmail,
+  ScimPhoneType,
+  ScimPhoneNumber,
+  ScimImType,
+  ScimIm,
+  ScimPhotoType,
+  ScimPhoto,
+  ScimAddressType,
+  ScimAddress,
+  ScimGroupReference,
+  ScimEntitlement,
+  ScimX509Certificate,
+  ScimName,
+  ScimUser,
+  ScimUserResource,
+  ScimUserCreate,
 } from './core/types/user';
-export type { ScimEmailType, ScimEmail, ScimPhoneType, ScimPhoneNumber, ScimImType, ScimIm, ScimPhotoType, ScimPhoto, ScimAddressType, ScimAddress, ScimGroupReference, ScimEntitlement, ScimX509Certificate, ScimName, ScimUser, ScimUserResource, ScimUserCreate } from './core/types/user';
-export {
-  PATCH_OP_SCHEMA,
-} from './core/types/patch';
+export { PATCH_OP_SCHEMA } from './core/types/patch';
 export type { PatchOpKind, PatchOperation, PatchRequest } from './core/types/patch';
-export {
-  LIST_RESPONSE_SCHEMA,
-  SEARCH_REQUEST_SCHEMA,
-} from './core/types/list';
+export { LIST_RESPONSE_SCHEMA, SEARCH_REQUEST_SCHEMA } from './core/types/list';
 export type { ScimListResponse, ScimListQuery, Page } from './core/types/list';
 
 /* ── Filters — RFC 7644 §3.4.2.2 ───────────────────────────────────────── */
@@ -82,10 +89,7 @@ export type {
 export { SCIM_USER_SCHEMA_DESCRIPTOR } from './core/schemas/user-schema';
 
 /* ── ServiceProviderConfig — RFC 7643 §5, RFC 7644 §4 ──────────────────── */
-export {
-  SPC_SCHEMA,
-  DEFAULT_SCIM_SERVICE_CONFIG,
-} from './core/spc/provider-config';
+export { SPC_SCHEMA, DEFAULT_SCIM_SERVICE_CONFIG } from './core/spc/provider-config';
 export type {
   ScimAuthenticationScheme,
   ScimServiceProviderConfig,
@@ -100,11 +104,20 @@ export { buildServiceProviderConfig } from './core/spc/merge-provider-config';
 export type { ScimSPCOverrides } from './core/spc/merge-provider-config';
 
 /* ── Attribute selection projection — RFC 7644 §3.9/§3.10 ─────────────── */
-export { projectScimResource, splitAttributePath, selectAttributePath } from './core/attributes/attributes';
+export {
+  projectScimResource,
+  splitAttributePath,
+  selectAttributePath,
+} from './core/attributes/attributes';
 export type { ScimAttributeSelection } from './core/attributes/attributes';
 
 /* ── PATCH application — RFC 7644 §3.5.2 via scim-patch (M3) ────────────── */
-export { parsePatchOperations, applyPatchOperations, applyPatchRequest, mapPatchEngineError } from './core/patch/apply';
+export {
+  parsePatchOperations,
+  applyPatchOperations,
+  applyPatchRequest,
+  mapPatchEngineError,
+} from './core/patch/apply';
 
 /* ── Nest module + SPI wiring — RFC 7644 §1–§3 routing layer ───────────── */
 export { ScimModule } from './nest/scim-module';
@@ -122,9 +135,7 @@ export type {
   ScimUserMeta,
   AttributePathMap,
 } from './nest/spi';
-export {
-  ScimUserAdapter,
-} from './nest/scim-user-adapter';
+export { ScimUserAdapter } from './nest/scim-user-adapter';
 export type {
   AdapterResourceResult,
   ScimUserAdapterOptions,
