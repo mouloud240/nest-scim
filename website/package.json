@@ -1,0 +1,19 @@
+{
+  "name": "@nest-scim/website",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev .",
+    "docs:build": "vitepress build . && tsc -p tsconfig.json --noEmit",
+    "docs:preview": "vitepress preview ."
+  },
+  "devDependencies": {
+    "@nest-scim/core": "workspace:*",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@nestjs/common": "^11.0.0",
+    "@fontsource-variable/schibsted-grotesk": "^5.3.0",
+    "vitepress": "1.6.4",
+    "vue": "^3.5.0"
+  }
+}

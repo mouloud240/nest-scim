@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+website/.vitepress/cache/
+website/.vitepress/dist/
 *.tsbuildinfo
 .pnpm-store/
 .eslintcache

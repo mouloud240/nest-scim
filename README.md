@@ -2,6 +2,12 @@
 
 > SCIM 2.0 (RFC 7643/7644) User provisioning server library for NestJS.
 
+[Documentation and quickstart](https://mouloud240.github.io/nest-scim/) · [npm package](https://www.npmjs.com/package/@nest-scim/core) · [GitHub](https://github.com/mouloud240/nest-scim)
+
+```sh
+npm install @nest-scim/core
+```
+
 ## What it does
 
 `@nest-scim/core` turns an existing SAML/SSO-enabled NestJS application into a SCIM 2.0 User
@@ -122,7 +128,8 @@ the first request.
 
 ```
 packages/scim   # @nest-scim/core — the SCIM protocol library
-docs/           # specs and project documentation
+website/        # VitePress landing page and user documentation
+docs/           # local specs and project planning notes (not published)
 ```
 
 ## Development
@@ -131,10 +138,20 @@ docs/           # specs and project documentation
 pnpm install     # install workspace dependencies
 pnpm build       # build all packages
 pnpm test        # run all package tests
-pnpm lint        # eslint
+pnpm lint        # oxlint
+pnpm --filter @nest-scim/website docs:dev    # run the docs site
+pnpm --filter @nest-scim/website docs:build  # build docs + type-check snippets
 pnpm format      # prettier
 pnpm changeset   # record a change for the next release
 ```
+
+## Release
+
+Add a Changesets entry for each package change. Merging to `master` creates or updates the version pull request. Merging that release PR publishes through GitHub Actions once the package has a license and exists on npm.
+
+The current `0.0.0-alpha.0` version and pending Changesets calculate a placeholder `0.0.0` release. The workflow blocks that version: set the first version and changelog to the intended launch version (planned `1.0.0`) in the initial version PR. After the package is licensed and that release PR is merged, publish the first version manually; npm requires an existing package before it can have a trusted publisher. Then configure npm Trusted Publishing for `mouloud240/nest-scim`, workflow `release.yml`, environment `npm`. Later releases use OIDC; no long-lived npm token is stored in GitHub.
+
+Enable **Allow GitHub Actions to create and approve pull requests** in the repository's Actions settings so Changesets can open its version PR.
 
 ## License
 

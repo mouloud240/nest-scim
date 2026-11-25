@@ -2,5 +2,5 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["dist/**", "coverage/**"]
+  "ignorePatterns": ["dist/**", "coverage/**", "website/.vitepress/**"]
 }

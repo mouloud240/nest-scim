@@ -1,0 +1,205 @@
+name: Release npm package
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-check:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      has_changesets: ${{ steps.state.outputs.has_changesets }}
+      is_licensed: ${{ steps.state.outputs.is_licensed }}
+      package_exists: ${{ steps.state.outputs.package_exists }}
+      version_published: ${{ steps.state.outputs.version_published }}
+      release_version: ${{ steps.state.outputs.release_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          runtime: node@24
+          install: false
+
+      - name: Check release state
+        id: state
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readdirSync, readFileSync } from 'node:fs';
+
+          const changesets = readdirSync('.changeset').some(
+            (file) => file.endsWith('.md') && file !== 'README.md',
+          );
+          const { license, version } = JSON.parse(readFileSync('packages/scim/package.json', 'utf8'));
+          const licensed = typeof license === 'string' && license !== 'UNLICENSED';
+
+          if (!licensed) {
+            console.log('::notice::npm publishing remains disabled until packages/scim/package.json has a license.');
+          }
+          if (['0.0.0-alpha.0', '0.0.0'].includes(version)) {
+            console.log('::notice::The first Changesets version PR needs the intended release version before publishing.');
+          }
+
+          const packageUrl = 'https://registry.npmjs.org/@nest-scim%2fcore';
+          const packageResponse = await fetch(packageUrl);
+          if (!packageResponse.ok && packageResponse.status !== 404) {
+            throw new Error(`npm registry check failed: HTTP ${packageResponse.status}`);
+          }
+
+          const packageExists = packageResponse.ok;
+          if (!packageExists) {
+            console.log('::notice::The first npm publish must bootstrap the package before OIDC trusted publishing can be configured.');
+          }
+
+          let versionPublished = false;
+          if (packageExists) {
+            const versionResponse = await fetch(`${packageUrl}/${encodeURIComponent(version)}`);
+            if (!versionResponse.ok && versionResponse.status !== 404) {
+              throw new Error(`npm version check failed: HTTP ${versionResponse.status}`);
+            }
+            versionPublished = versionResponse.ok;
+          }
+
+          appendFileSync(process.env.GITHUB_OUTPUT, `has_changesets=${changesets}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `is_licensed=${licensed}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `package_exists=${packageExists}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `version_published=${versionPublished}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `release_version=${version}\n`);
+          NODE
+
+  verify:
+    if: github.ref == 'refs/heads/master'
+    needs: release-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          runtime: node@24
+          install: false
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build documentation and type-check snippets
+        run: pnpm --filter @nest-scim/website docs:build
+
+      - name: Pack npm release
+        if: needs.release-check.outputs.has_changesets == 'false' && needs.release-check.outputs.is_licensed == 'true' && needs.release-check.outputs.package_exists == 'true' && needs.release-check.outputs.version_published == 'false' && needs.release-check.outputs.release_version != '0.0.0-alpha.0' && needs.release-check.outputs.release_version != '0.0.0'
+        run: pnpm --filter @nest-scim/core pack --pack-destination artifacts
+
+      - name: Upload npm artifact
+        if: needs.release-check.outputs.has_changesets == 'false' && needs.release-check.outputs.is_licensed == 'true' && needs.release-check.outputs.package_exists == 'true' && needs.release-check.outputs.version_published == 'false' && needs.release-check.outputs.release_version != '0.0.0-alpha.0' && needs.release-check.outputs.release_version != '0.0.0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  version:
+    if: needs.release-check.outputs.has_changesets == 'true'
+    needs: [release-check, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          runtime: node@24
+          install: false
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Create or update the version pull request
+        uses: changesets/action@v1
+        with:
+          version: pnpm version-packages
+          commitMode: github-api
+
+  publish:
+    if: needs.release-check.outputs.has_changesets == 'false' && needs.release-check.outputs.is_licensed == 'true' && needs.release-check.outputs.package_exists == 'true' && needs.release-check.outputs.version_published == 'false' && needs.release-check.outputs.release_version != '0.0.0-alpha.0' && needs.release-check.outputs.release_version != '0.0.0'
+    needs: [release-check, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@nest-scim/core
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: artifacts
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Check npm CLI for trusted publishing
+        run: |
+          npm_version="$(npm --version)"
+          node -e 'const [major, minor, patch] = process.argv[1].split(".").map(Number); if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) process.exit(1)' "$npm_version"
+
+      - name: Publish with npm OIDC trusted publishing
+        run: |
+          tarball="$(find artifacts -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "$tarball"
+          npm publish "$tarball" --access public --ignore-scripts
+
+  github-release:
+    if: always() && needs.release-check.result == 'success' && needs.verify.result == 'success' && needs.release-check.outputs.has_changesets == 'false' && needs.release-check.outputs.is_licensed == 'true' && needs.release-check.outputs.package_exists == 'true' && (needs.release-check.outputs.version_published == 'true' || needs.publish.result == 'success') && needs.release-check.outputs.release_version != '0.0.0-alpha.0' && needs.release-check.outputs.release_version != '0.0.0'
+    needs: [release-check, verify, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.release-check.outputs.release_version }}
+        run: |
+          tag="@nest-scim/core@$RELEASE_VERSION"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists."
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$tag" \
+              --generate-notes
+          fi
