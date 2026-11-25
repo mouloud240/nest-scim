@@ -123,6 +123,111 @@ body {
   border: 0;
 }
 
+/* Documentation navigation */
+:root {
+  --vp-sidebar-width: 288px;
+  --vp-sidebar-bg-color: var(--vp-c-bg-soft);
+}
+
+.VPSidebar {
+  border-right: 1px solid var(--vp-c-divider);
+}
+
+.VPSidebar .nav {
+  padding-bottom: 36px;
+}
+
+.VPSidebar .group + .group {
+  margin-top: 8px;
+  padding-top: 12px;
+}
+
+.VPSidebar .VPSidebarItem .indicator {
+  display: none;
+}
+
+.VPSidebar .VPSidebarItem .item {
+  min-height: 34px;
+  margin-inline: -8px;
+  padding: 1px 8px;
+  align-items: center;
+  border-radius: 6px;
+  transition: background-color 140ms ease;
+}
+
+.VPSidebar .VPSidebarItem.is-link > .item:hover {
+  background: var(--vp-c-bg-mute);
+}
+
+.VPSidebar .VPSidebarItem.is-active > .item {
+  background: var(--vp-c-brand-soft);
+}
+
+.VPSidebar .VPSidebarItem.is-active > .item .text {
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+}
+
+.VPSidebar .VPSidebarItem.level-0 {
+  padding-bottom: 8px;
+}
+
+.VPSidebar .VPSidebarItem.collapsed.level-0 {
+  padding-bottom: 4px;
+}
+
+.VPSidebar .VPSidebarItem.level-0 > .item > .text {
+  padding-block: 8px;
+  color: var(--vp-c-text-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.065em;
+  line-height: 18px;
+  text-transform: uppercase;
+}
+
+.VPSidebar .VPSidebarItem.level-0.has-active > .item > .text {
+  color: var(--vp-c-brand-1);
+}
+
+.VPSidebar .VPSidebarItem.level-1 {
+  margin-block: 2px;
+}
+
+.VPSidebar .VPSidebarItem.level-1 > .item > .text {
+  color: var(--vp-c-text-1);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.VPSidebar .VPSidebarItem.level-2 > .item > .link > .text {
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.VPSidebar .VPSidebarItem.level-1 .items,
+.VPSidebar .VPSidebarItem.level-2 .items {
+  border-left: 0;
+  padding-left: 10px;
+}
+
+.VPSidebar .VPSidebarItem .caret {
+  border-radius: 4px;
+}
+
+.VPSidebar .VPSidebarItem .item:focus-visible,
+.VPSidebar .VPSidebarItem .link:focus-visible,
+.VPSidebar .VPSidebarItem .caret:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .VPSidebar .VPSidebarItem .item {
+    transition: none;
+  }
+}
+
 /* Landing page */
 .landing-shell {
   --land-bg: #fff;

@@ -63,6 +63,7 @@ Rules:
 - **Capability row:** 20px line icon in primary, 600-weight title, muted description, mono RFC reference at the right edge.
 - **Endpoint table:** full-width table with mono method tokens (`GET`, `POST`), hairline row dividers, no zebra striping.
 - **Buttons:** primary = solid blue with white text, 6px radius; secondary = hairline border on white; both 44px minimum height.
+- **Docs sidebar:** one navigation tree across guides, API reference, recipes, and project status. Collapsible parent groups keep the current branch open; muted uppercase top-level labels distinguish the major areas, and the active page uses a blue-tinted row rather than a side stripe.
 - **Docs callouts:** VitePress custom containers restyled to blue-tinted backgrounds with a 1px full border and a leading icon; no side stripe.
 
 ## Motion

@@ -40,56 +40,87 @@ export default defineConfig({
         rel: 'noreferrer',
       },
     ],
-    sidebar: {
-      '/guide/': [
-        {
-          text: 'Start here',
-          items: [
-            { text: 'Getting started', link: '/guide/getting-started' },
-            { text: 'Architecture', link: '/guide/architecture' },
-          ],
-        },
-        {
-          text: 'Build your SCIM service',
-          items: [
-            { text: 'Users and mapping', link: '/guide/users' },
-            { text: 'PATCH', link: '/guide/patch' },
-            { text: 'Filtering', link: '/guide/filtering' },
-            { text: 'Pagination', link: '/guide/pagination' },
-            { text: 'Authentication', link: '/guide/authentication' },
-            { text: 'Errors', link: '/guide/errors' },
-          ],
-        },
-      ],
-      '/reference/': [
-        {
-          text: 'API reference',
-          items: [
-            { text: 'Module options', link: '/reference/module-options' },
-            { text: 'SPI contracts', link: '/reference/spi' },
-            { text: 'DomainFilter', link: '/reference/domain-filter' },
-            { text: 'Endpoints', link: '/reference/endpoints' },
-            { text: 'Errors', link: '/reference/errors' },
-          ],
-        },
-      ],
-      '/recipes/': [
-        {
-          text: 'Identity providers',
-          items: [
-            { text: 'Okta', link: '/recipes/okta' },
-            { text: 'Microsoft Entra ID', link: '/recipes/entra-id' },
-          ],
-        },
-        {
-          text: 'Storage',
-          items: [{ text: 'Translate filters for your store', link: '/recipes/store-filtering' }],
-        },
-      ],
-      '/project/': [
-        { text: 'Project', items: [{ text: 'Status and scope', link: '/project/status' }] },
-      ],
-    },
+    sidebar: [
+      {
+        text: 'Guides',
+        collapsed: true,
+        items: [
+          {
+            text: 'Start here',
+            collapsed: true,
+            items: [
+              { text: 'Getting started', link: '/guide/getting-started' },
+              { text: 'Architecture', link: '/guide/architecture' },
+            ],
+          },
+          {
+            text: 'User provisioning',
+            collapsed: true,
+            items: [
+              { text: 'Users and mapping', link: '/guide/users' },
+              { text: 'PATCH', link: '/guide/patch' },
+              { text: 'Filtering', link: '/guide/filtering' },
+              { text: 'Pagination', link: '/guide/pagination' },
+            ],
+          },
+          {
+            text: 'Operations',
+            collapsed: true,
+            items: [
+              { text: 'Authentication', link: '/guide/authentication' },
+              { text: 'Errors', link: '/guide/errors' },
+            ],
+          },
+        ],
+      },
+      {
+        text: 'API reference',
+        collapsed: true,
+        items: [
+          {
+            text: 'Module',
+            collapsed: true,
+            items: [
+              { text: 'Module options', link: '/reference/module-options' },
+              { text: 'Endpoints', link: '/reference/endpoints' },
+            ],
+          },
+          {
+            text: 'Contracts',
+            collapsed: true,
+            items: [
+              { text: 'SPI contracts', link: '/reference/spi' },
+              { text: 'DomainFilter', link: '/reference/domain-filter' },
+            ],
+          },
+          { text: 'Errors', link: '/reference/errors' },
+        ],
+      },
+      {
+        text: 'Recipes',
+        collapsed: true,
+        items: [
+          {
+            text: 'Identity providers',
+            collapsed: true,
+            items: [
+              { text: 'Okta', link: '/recipes/okta' },
+              { text: 'Microsoft Entra ID', link: '/recipes/entra-id' },
+            ],
+          },
+          {
+            text: 'Storage',
+            collapsed: true,
+            items: [{ text: 'Translate filters for your store', link: '/recipes/store-filtering' }],
+          },
+        ],
+      },
+      {
+        text: 'Project',
+        collapsed: true,
+        items: [{ text: 'Status and scope', link: '/project/status' }],
+      },
+    ],
     search: { provider: 'local' },
     editLink: {
       pattern: 'https://github.com/mouloud240/nest-scim/edit/master/website/:path',
