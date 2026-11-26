@@ -2,7 +2,10 @@
 
 > SCIM 2.0 (RFC 7643/7644) User provisioning server library for NestJS.
 
-[Documentation and quickstart](https://nest-scim.mouloud.foo/) · [npm package](https://www.npmjs.com/package/@nest-scim/core) · [GitHub](https://github.com/mouloud240/nest-scim)
+[![npm version](https://img.shields.io/npm/v/@nest-scim/core?color=006ac5&logo=npm&logoColor=white)](https://www.npmjs.com/package/@nest-scim/core)
+[![npm downloads](https://img.shields.io/npm/dm/@nest-scim/core?color=006ac5&logo=npm&logoColor=white)](https://www.npmjs.com/package/@nest-scim/core)
+
+**[Documentation and quickstart →](https://nest-scim.mouloud.foo/)** · [npm package](https://www.npmjs.com/package/@nest-scim/core) · [GitHub](https://github.com/mouloud240/nest-scim)
 
 ```sh
 npm install @nest-scim/core

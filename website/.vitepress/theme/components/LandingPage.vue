@@ -128,6 +128,30 @@ const endpoints = [
             <span class="sr-only" aria-live="polite">{{ copyStatus }}</span>
           </div>
           <p class="install-note">Install from npm · bring your own persistence and auth</p>
+          <div class="hero-badges">
+            <a
+              href="https://www.npmjs.com/package/@nest-scim/core"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                src="https://img.shields.io/npm/v/@nest-scim/core?color=006ac5&amp;logo=npm&amp;logoColor=white"
+                alt="npm version"
+                height="20"
+              />
+            </a>
+            <a
+              href="https://www.npmjs.com/package/@nest-scim/core"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                src="https://img.shields.io/npm/dm/@nest-scim/core?color=006ac5&amp;logo=npm&amp;logoColor=white"
+                alt="npm downloads per month"
+                height="20"
+              />
+            </a>
+          </div>
         </div>
 
         <figure class="protocol-console" aria-labelledby="console-caption">
@@ -314,6 +338,8 @@ Content-Type: application/scim+json
       <p>Built for the systems that provision your users.</p>
       <div>
         <a :href="withBase('/project/status')">Project status</a
+        ><a href="https://www.npmjs.com/package/@nest-scim/core" target="_blank" rel="noreferrer"
+          >npm ↗</a
         ><a href="https://github.com/mouloud240/nest-scim" target="_blank" rel="noreferrer"
           >GitHub ↗</a
         >

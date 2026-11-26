@@ -1,6 +1,11 @@
 # @nest-scim/core
 
+[![npm version](https://img.shields.io/npm/v/@nest-scim/core?color=006ac5&logo=npm&logoColor=white)](https://www.npmjs.com/package/@nest-scim/core)
+[![npm downloads](https://img.shields.io/npm/dm/@nest-scim/core?color=006ac5&logo=npm&logoColor=white)](https://www.npmjs.com/package/@nest-scim/core)
+
 SCIM 2.0 User provisioning for NestJS. The library handles the protocol; your application supplies its user service and mapper.
+
+**[Documentation and quickstart →](https://nest-scim.mouloud.foo/)**
 
 ## Install
 
