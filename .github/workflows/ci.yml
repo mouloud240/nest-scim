@@ -20,8 +20,9 @@ jobs:
           - node: 22
             pnpm: 11.3.0
     env:
-      # pnpm 11 requires Node.js >= 22.13. Keep the Node 20 leg on pnpm 10
-      # instead of letting pnpm auto-switch to the packageManager version.
+      # Use the pnpm version selected per Node.js leg, not the packageManager
+      # field: pnpm 11 requires Node.js >= 22.13, so Node 20 stays on pnpm 10.
+      COREPACK_ENABLE_PROJECT_SPEC: '0'
       npm_config_manage_package_manager_versions: 'false'
     steps:
       - uses: actions/checkout@v4
@@ -30,9 +31,10 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ matrix.pnpm }}
+      - name: Enable pnpm ${{ matrix.pnpm }}
+        run: |
+          corepack enable
+          corepack prepare pnpm@${{ matrix.pnpm }} --activate
 
       - name: Pin NestJS v${{ matrix.nestjs }} for this run
         if: matrix.nestjs != 11
