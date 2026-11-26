@@ -14,6 +14,15 @@ jobs:
       matrix:
         node: [20, 22]
         nestjs: [10, 11]
+        include:
+          - node: 20
+            pnpm: 10.18.3
+          - node: 22
+            pnpm: 11.3.0
+    env:
+      # pnpm 11 requires Node.js >= 22.13. Keep the Node 20 leg on pnpm 10
+      # instead of letting pnpm auto-switch to the packageManager version.
+      npm_config_manage_package_manager_versions: 'false'
     steps:
       - uses: actions/checkout@v4
 
@@ -21,12 +30,33 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      - name: Enable pnpm
-        run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ matrix.pnpm }}
 
       - name: Pin NestJS v${{ matrix.nestjs }} for this run
         if: matrix.nestjs != 11
-        run: pnpm -w pkg set 'pnpm.overrides.@nestjs/common=^${{ matrix.nestjs }}.0.0'
+        env:
+          NEST_VERSION: ${{ matrix.nestjs }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const file = 'packages/scim/package.json';
+          const pkg = JSON.parse(readFileSync(file, 'utf8'));
+          const packages = [
+            '@nestjs/common',
+            '@nestjs/core',
+            '@nestjs/platform-express',
+            '@nestjs/testing',
+          ];
+
+          for (const name of packages) {
+            pkg.devDependencies[name] = `^${process.env.NEST_VERSION}.0.0`;
+          }
+
+          writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
 
       - name: Install
         run: pnpm install --no-frozen-lockfile
